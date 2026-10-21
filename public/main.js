@@ -38,9 +38,15 @@
   // =====================================================================
   // 설정 (브라우저에 저장)
   // =====================================================================
-  const defaults = { sens: 1, fov: 80, auto: isTouch, mode: 2, diff: 'normal', loadout: { primary: 'ar', secondary: 'pistol', melee: 'knife', utility: 'frag' } };
+  const SETTINGS_VER = 2; // 올리면 모든 사람의 난이도/보조 설정이 새 기본값으로 한 번 초기화됨
+  const defaults = { v: SETTINGS_VER, sens: 1, fov: 80, auto: isTouch, assist: isTouch ? 2 : 0, mode: 2, diff: isTouch ? 'rookie' : 'easy', loadout: { primary: 'ar', secondary: 'pistol', melee: 'knife', utility: 'frag' } };
   let settings = Object.assign({}, defaults);
-  try { Object.assign(settings, JSON.parse(safeGet('rival_settings') || '{}')); } catch (e) {}
+  try {
+    const saved = JSON.parse(safeGet('rival_settings') || '{}');
+    if (saved.v !== SETTINGS_VER) { delete saved.diff; delete saved.auto; delete saved.assist; delete saved.mode; } // 이전 버전 설정은 새 기본값(쉬운 난이도 + 조작 보조)으로
+    Object.assign(settings, saved);
+  } catch (e) {}
+  settings.v = SETTINGS_VER;
   settings.loadout = Object.assign({}, defaults.loadout, settings.loadout);
   ['primary', 'secondary', 'melee', 'utility'].forEach((s) => { const id = settings.loadout[s]; if (!W.list[id] || W.list[id].slot !== s) settings.loadout[s] = defaults.loadout[s]; });
   const saveSettings = () => safeSet('rival_settings', JSON.stringify(settings));
@@ -120,6 +126,8 @@
     $('set-sens').value = settings.sens; $('v-sens').textContent = settings.sens;
     $('set-fov').value = settings.fov; $('v-fov').textContent = settings.fov;
     $('set-auto').checked = !!settings.auto;
+    $('set-assist').value = String(settings.assist);
+    $('set-assist').onchange = (e) => { settings.assist = +e.target.value; saveSettings(); };
     $('set-mode').onchange = (e) => { settings.mode = +e.target.value; saveSettings(); };
     $('set-diff').onchange = (e) => { settings.diff = e.target.value; saveSettings(); };
     $('set-sens').oninput = (e) => { settings.sens = +e.target.value; $('v-sens').textContent = settings.sens; saveSettings(); };
@@ -132,11 +140,31 @@
       : 'PC: WASD 이동 · 마우스 시점 · 좌클릭 발사 · 우클릭 조준 · R 장전<br>1·2·3·4 또는 휠 무기 교체(4=유틸) · Tab 점수판 · Space 점프 · Shift 달리기 · Esc 일시정지';
   }
 
+  function helpHtml() {
+    return isTouch
+      ? '<p><b>이동</b>: 왼쪽 화면을 누른 채 밀기 (끝까지 밀면 달리기)</p>' +
+        '<p><b>시점</b>: 오른쪽 화면을 드래그</p>' +
+        '<p><b>발사</b>: 빨간 발사 버튼을 누르는 동안 발사. <b>누른 채로 손가락을 움직이면 시점도 같이 돌아가요!</b> (왼쪽에도 작은 발사 버튼이 있어요)</p>' +
+        '<p><b>조준</b>: 파란 버튼 (한 번 누르면 켜지고 다시 누르면 꺼져요) · <b>장전</b>: 노란 버튼 · <b>점프</b>: 회색 버튼</p>' +
+        '<p><b>무기 교체</b>: 화면 아래쪽 무기 이름 버튼 · <b>점수판</b>: 위쪽 점수 상자 탭</p>' +
+        '<p>💡 <b>에임 보조</b>와 <b>자동 발사</b>가 켜져 있어서, 적 쪽을 대충 보면 시점이 살짝 끌려가고 자동으로 쏴요. (로비 설정에서 끌 수 있어요)</p>' +
+        '<p>💡 처음엔 <b>🎯 사격장</b>에서 연습하고, 난이도는 <b>입문</b>으로 시작해 보세요. 폰은 <b>가로</b>로 돌려서 하세요.</p>'
+      : '<p><b>이동</b>: WASD · <b>달리기</b>: Shift · <b>점프</b>: Space</p>' +
+        '<p><b>시점</b>: 마우스 · <b>발사</b>: 좌클릭 · <b>조준</b>: 우클릭 · <b>장전</b>: R</p>' +
+        '<p><b>무기 교체</b>: 1·2·3·4 또는 마우스 휠, Q(직전 무기) · <b>점수판</b>: Tab</p>' +
+        '<p><b>일시정지</b>: Esc (사격장에서는 이때 무기를 바꿀 수 있어요)</p>' +
+        '<p>💡 처음엔 <b>🎯 사격장</b>에서 연습해 보세요.</p>';
+  }
+  function showHelp() { $('help-body').innerHTML = helpHtml(); $('help').classList.remove('hidden'); }
+  $('help-btn').onclick = showHelp;
+  $('help-close').onclick = () => { $('help').classList.add('hidden'); safeSet('rival_help', '1'); };
+
   function enterLobby() {
     $('lobby-nick').textContent = myNick;
     $('my-stats').textContent = myStats ? '내 전적: ' + myStats.wins + '승 ' + myStats.losses + '패 · ' + myStats.kills + '킬 ' + myStats.deaths + '데스' : '';
     show('screen-lobby');
     loadBoard();
+    if (!safeGet('rival_help')) showHelp(); // 처음 들어온 사람에게 한 번 보여줌
   }
 
   // =====================================================================
@@ -294,6 +322,7 @@
       if (r.e) {
         let dmg = w.dmg * W.falloff(w, r.t);
         if (r.head) dmg *= w.head; else if (py < r.e.y - EYE + 0.7) dmg *= 0.85; // 다리는 약간 약함
+        if (shooter.isBot && shooter.diff) dmg *= shooter.diff.dmg; // 낮은 난이도 봇은 데미지가 약함
         spark(px, py, pz, 0xff3030); anyHit = true;
         damage(r.e, dmg, r.head, shooter, w);
       } else if (r.wall) spark(px, py, pz, 0xffc060);
@@ -306,6 +335,7 @@
     if (!t.alive || match.phase !== 'live') return;
     amount = Math.max(1, Math.round(amount));
     t.hp = Math.max(0, t.hp - amount);
+    if (t === P && attacker && attacker !== P) showHitDir(attacker);
     if (t === P) { dmgT = Math.min(0.8, dmgT + 0.4); if (now - lastHurt > 0.12) { lastHurt = now; Sfx.hurt(); } } else t.flash = 0.12;
     if (attacker === P && t !== P) { hitmark(head); Sfx.hit(head); if (head) rangeStats.heads++; rangeStats.last = amount + (head ? ' (헤드샷)' : ''); }
     if (t.hp <= 0) kill(t, attacker, head, w);
@@ -318,6 +348,37 @@
     if (t === P) { match.deaths++; inp.adsToggle = false; $('btn-ads').classList.remove('on'); P.flashT = 0; }
     feed(a === t ? t.name + '  [' + w.name + ' 자폭]' : a.name + '  [' + w.name + (head ? ' · 헤드샷' : '') + ']  ' + t.name, a === P || t === P);
     checkRoundEnd();
+  }
+
+  // 맞았을 때 쏜 사람 방향으로 빨간 화살표
+  function showHitDir(a) {
+    const ang = -(Math.atan2(-(a.x - P.x), -(a.z - P.z)) - P.yaw);
+    const el = document.createElement('i'); el.className = 'hd';
+    el.style.transform = 'rotate(' + ang.toFixed(3) + 'rad) translateY(-95px)';
+    $('hitdirs').appendChild(el);
+    setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 900);
+  }
+
+  // 레이더: 위쪽이 내가 보는 방향. 아군은 항상, 적은 가까이 있거나 방금 쏜 경우에만(쉬운 난이도는 더 넓게) 표시.
+  let radarT = 0;
+  function drawRadar(dt) {
+    radarT -= dt; if (radarT > 0) return; radarT = 0.1;
+    const cv = $('radar'), g = cv.getContext('2d'), R = 50, rng = 32;
+    g.clearRect(0, 0, 100, 100);
+    g.fillStyle = 'rgba(0,0,0,0.45)'; g.beginPath(); g.arc(R, R, R - 1, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = 'rgba(255,255,255,0.25)'; g.lineWidth = 1; g.beginPath(); g.arc(R, R, R / 2, 0, Math.PI * 2); g.stroke();
+    const sy = Math.sin(P.yaw), cy = Math.cos(P.yaw), wide = match.diff === 'rookie' || match.diff === 'easy';
+    all().forEach((e) => {
+      if (e === P || !e.alive) return;
+      const dx = e.x - P.x, dz = e.z - P.z, dist = Math.hypot(dx, dz), ally = e.team === 'A';
+      if (!ally && !(e.firedT > 0 || dist < 14 || (wide && dist < 34))) return;
+      const fwd = dx * -sy + dz * -cy, rgt = dx * cy + dz * -sy; // 내 시점 기준: 앞쪽 / 오른쪽 거리
+      const sx = rgt, sz = -fwd;                                   // 화면 좌표(앞쪽이 위)
+      const m = Math.min(1, (R - 6) / (Math.hypot(sx, sz) * (R / rng) || 1));
+      const px = R + sx * (R / rng) * m, py = R + sz * (R / rng) * m;
+      g.fillStyle = ally ? '#5aa2ff' : '#ff4d5e'; g.beginPath(); g.arc(px, py, 3.2, 0, Math.PI * 2); g.fill();
+    });
+    g.fillStyle = '#fff'; g.beginPath(); g.moveTo(R, R - 6); g.lineTo(R + 4, R + 4); g.lineTo(R - 4, R + 4); g.closePath(); g.fill(); // 나
   }
 
   function hitmark(head) {
@@ -430,7 +491,8 @@
     Object.assign(P, { x: spawnPoint.x, y: EYE, z: spawnPoint.z, vy: 0, onGround: true, yaw: spawnPoint.yaw, pitch: 0, hp: 100, alive: true, firedT: 0 });
     deadCamY = EYE; recoilAcc = 0;
     setupGuns();
-    for (let i = 1; i < n; i++) botsApi.spawn({ team: 'A', name: '🤖' + names.pop(), diff: match.diff, x: sA[i].x, z: sA[i].z, yaw: sA[i].yaw });
+    const allyDiff = { rookie: 'easy', easy: 'normal', normal: 'hard', hard: 'hard', insane: 'insane' }[match.diff] || match.diff; // 아군은 한 단계 더 잘 싸움
+    for (let i = 1; i < n; i++) botsApi.spawn({ team: 'A', name: '🤖' + names.pop(), diff: allyDiff, x: sA[i].x, z: sA[i].z, yaw: sA[i].yaw });
     for (let i = 0; i < n; i++) botsApi.spawn({ team: 'B', name: '🤖' + names.pop(), diff: match.diff, x: sB[i].x, z: sB[i].z, yaw: sB[i].yaw });
   }
 
@@ -496,6 +558,28 @@
   // =====================================================================
   // 플레이어: 이동 / 조준 / 사격 / 재장전 / 무기 교체
   // =====================================================================
+  let lookMul = 1; // 적 근처에서는 시점 감도를 낮춰서 조준하기 쉽게 (에임 보조)
+  const angDiffM = (a, b) => { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
+
+  // 조준점 근처(원뿔 안)에서 보이는 가장 가까운 적을 찾음. 가까울수록 범위가 넓음.
+  function findAssistTarget(w) {
+    if (!settings.assist || !w || w.melee || w.util) return null;
+    const k = settings.assist === 2 ? 1 : 0.5, d = camDir();
+    let best = null, bestAng = 1e9;
+    for (const e of enemiesOf('A')) {
+      const dx = e.x - P.x, dy = (e.y - 0.55) - P.y, dz = e.z - P.z, dist = Math.hypot(dx, dy, dz);
+      if (dist > Math.min(w.range[1], 70)) continue;
+      const cos = (dx * d[0] + dy * d[1] + dz * d[2]) / dist;
+      if (cos <= 0) continue;
+      const ang = Math.acos(Math.min(1, cos));
+      if (ang > Math.atan2(1.4 * k, dist) + (3 + 4 * k) * DEG || ang >= bestAng) continue;
+      if (phys.rayBoxes(P.x, P.y, P.z, dx / dist, dy / dist, dz / dist, dist) < dist - 0.5) continue; // 벽 뒤는 제외
+      if (smoked(P.x, P.y, P.z, e.x, e.y - 0.55, e.z)) continue;
+      best = { e, dx, dy, dz, dist }; bestAng = ang;
+    }
+    return best;
+  }
+
   const camDir = () => { const cp = Math.cos(P.pitch); return [-Math.sin(P.yaw) * cp, Math.sin(P.pitch), -Math.cos(P.yaw) * cp]; };
 
   function switchTo(i) {
@@ -546,7 +630,7 @@
     const canMove = P.alive && (live || match.phase === 'ready');
     if (!canMove) { fx = 0; fz = 0; }
     const joyMag = Math.hypot(joy.x, joy.y);
-    const sprint = (keys['ShiftLeft'] || keys['ShiftRight'] || joyMag > 0.9) && !(inp.fire);
+    const sprint = (keys['ShiftLeft'] || keys['ShiftRight'] || joyMag > 0.95) && !(inp.fire);
     const wantAds = P.alive && live && !w.melee && !w.util && !g.reload && (inp.adsHold || inp.adsToggle);
     const len = Math.max(1, Math.hypot(fx, fz));
     fx /= len; fz /= len;
@@ -565,8 +649,16 @@
     adsT += ((wantAds ? 1 : 0) - adsT) * Math.min(1, dt * 12);
 
     // 사격
-    const auto = P.alive && live && switchT <= 0 && !sprint && autoFireProbe(w);
+    const assistT = P.alive && live ? findAssistTarget(w) : null;
+    lookMul = assistT ? (settings.assist === 2 ? 0.55 : 0.8) : 1;
+    // 자동 발사: 조준점이 적에 닿았거나, 에임 보조(강)가 적을 잡았을 때
+    const auto = P.alive && live && switchT <= 0 && !sprint && (autoFireProbe(w) || (isTouch && settings.auto && settings.assist === 2 && !!assistT));
     const trigger = P.alive && live && switchT <= 0 && (inp.fire || auto);
+    if (assistT && (trigger || adsT > 0.3)) { // 쏘거나 조준하는 동안 시점이 적 쪽으로 부드럽게 끌려감
+      const wy = Math.atan2(-assistT.dx, -assistT.dz), wp = Math.atan2(assistT.dy, Math.hypot(assistT.dx, assistT.dz));
+      const f = 1 - Math.exp(-(settings.assist === 2 ? 9 : 4) * dt);
+      P.yaw += angDiffM(P.yaw, wy) * f; P.pitch = clamp(P.pitch + (wp - P.pitch) * f, -1.5, 1.5);
+    }
     const shots = W.update(g, dt, trigger);
     if (g.empty) { Sfx.empty(); Sfx.reload(); }
     if (P.flashT > 0) P.flashT = Math.max(0, P.flashT - dt);
@@ -830,6 +922,8 @@
     updateThrown(dt);
     updateFx(dt);
     updateHud(dt);
+    $('radar').classList.toggle('hidden', match.mode === 'range');
+    if (match.mode !== 'range') drawRadar(dt);
   }
 
   function render() {
@@ -934,7 +1028,7 @@
   document.addEventListener('keyup', (e) => { keys[e.code] = false; if (e.code === 'Tab') sbOpen = false; });
   document.addEventListener('mousemove', (e) => {
     if (!document.pointerLockElement) return;
-    const k = 0.0022 * settings.sens * (Math.tan(curFov * 0.5 * DEG) / Math.tan(settings.fov * 0.5 * DEG)); // 확대하면 감도도 같이 줄임
+    const k = 0.0022 * settings.sens * lookMul * (Math.tan(curFov * 0.5 * DEG) / Math.tan(settings.fov * 0.5 * DEG)); // 확대하면 감도도 같이 줄임
     P.yaw -= e.movementX * k;
     P.pitch = clamp(P.pitch - e.movementY * k, -1.5, 1.5);
   });
@@ -955,9 +1049,13 @@
   // 입력: 모바일 터치
   // =====================================================================
   (function setupTouch() {
-    const JOY_R = 50;
+    const JOY_R = 58;
     const base = $('joy-base'), knob = $('joy-knob');
     let joyId = null, joyOrigin = null, lookId = null, lookLast = null;
+    const applyTouchLook = (dx, dy) => {
+      const k = 0.0045 * settings.sens * lookMul * (Math.tan(curFov * 0.5 * DEG) / Math.tan(settings.fov * 0.5 * DEG));
+      P.yaw -= dx * k; P.pitch = clamp(P.pitch - dy * k, -1.5, 1.5);
+    };
     const findTouch = (list, id) => { for (const t of list) if (t.identifier === id) return t; return null; };
 
     // 왼쪽: 손가락을 처음 댄 자리가 조이스틱 중심(떠다니는 조이스틱)
@@ -978,6 +1076,7 @@
       if (d > JOY_R) { dx = dx / d * JOY_R; dy = dy / d * JOY_R; }
       knob.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
       joy.x = dx / JOY_R; joy.y = dy / JOY_R;
+      const mag = Math.hypot(joy.x, joy.y); if (mag < 0.12) { joy.x = joy.y = 0; } // 살짝 닿은 건 무시(데드존)
     }, { passive: false });
     const joyEnd = (e) => { if (!findTouch(e.changedTouches, joyId)) return; joyId = null; joy.x = joy.y = 0; base.classList.add('hidden'); };
     $('joy-zone').addEventListener('touchend', joyEnd);
@@ -994,9 +1093,7 @@
       e.preventDefault();
       const t = findTouch(e.changedTouches, lookId);
       if (!t || !mobilePlaying) return;
-      const k = 0.0045 * settings.sens * (Math.tan(curFov * 0.5 * DEG) / Math.tan(settings.fov * 0.5 * DEG));
-      P.yaw -= (t.clientX - lookLast.x) * k;
-      P.pitch = clamp(P.pitch - (t.clientY - lookLast.y) * k, -1.5, 1.5);
+      applyTouchLook(t.clientX - lookLast.x, t.clientY - lookLast.y);
       lookLast = { x: t.clientX, y: t.clientY };
     }, { passive: false });
     const lookEnd = (e) => { if (findTouch(e.changedTouches, lookId)) lookId = null; };
@@ -1010,7 +1107,16 @@
       el.addEventListener('touchend', end, { passive: false });
       el.addEventListener('touchcancel', end, { passive: false });
     };
-    hold($('btn-fire'), () => { inp.fire = true; $('btn-fire').classList.add('on'); }, () => { inp.fire = false; $('btn-fire').classList.remove('on'); });
+    // 발사 버튼 두 개(오른쪽/왼쪽). 어느 쪽이든 누르고 있으면 발사, 누른 채로 손가락을 움직이면 시점도 회전.
+    const fireHeld = new Set();
+    ['btn-fire', 'btn-fire2'].forEach((id) => {
+      const el = $(id); let tid = null, last = null;
+      el.addEventListener('touchstart', (e) => { e.preventDefault(); const t = e.changedTouches[0]; tid = t.identifier; last = { x: t.clientX, y: t.clientY }; fireHeld.add(id); inp.fire = true; el.classList.add('on'); }, { passive: false });
+      el.addEventListener('touchmove', (e) => { e.preventDefault(); const t = findTouch(e.changedTouches, tid); if (!t || !mobilePlaying) return; applyTouchLook(t.clientX - last.x, t.clientY - last.y); last = { x: t.clientX, y: t.clientY }; }, { passive: false });
+      const end = (e) => { e.preventDefault(); fireHeld.delete(id); inp.fire = fireHeld.size > 0; el.classList.remove('on'); tid = null; };
+      el.addEventListener('touchend', end, { passive: false });
+      el.addEventListener('touchcancel', end, { passive: false });
+    });
     hold($('btn-jump'), () => { keys['Space'] = true; }, () => { keys['Space'] = false; });
     $('btn-ads').addEventListener('touchstart', (e) => { e.preventDefault(); inp.adsToggle = !inp.adsToggle; $('btn-ads').classList.toggle('on', inp.adsToggle); }, { passive: false });
     $('btn-reload').addEventListener('touchstart', (e) => { e.preventDefault(); doReload(); }, { passive: false });
@@ -1026,7 +1132,7 @@
       P, keys, inp, boxes, match, W, joy,
       get guns() { return guns; }, get cur() { return cur; }, get bots() { return botsApi.bots; },
       all, switchTo, doReload, startRound, castRay, get nav() { return botsApi.nav; },
-      get ads() { return adsT; }, rangeStats, startRangeSession, resetRangeStats, nades, smokes, blasts, smoked, get sbOpen() { return sbOpen; },
+      get ads() { return adsT; }, settings, step: (n, dt) => { for (let i = 0; i < n; i++) update(dt); }, rangeStats, startRangeSession, resetRangeStats, nades, smokes, blasts, smoked, get sbOpen() { return sbOpen; },
     };
   }
 

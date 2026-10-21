@@ -3,15 +3,20 @@
 (function () {
   const W = window.RivalWeapons;
 
-  // 난이도: react 반응 시간(초), aim 추가 조준 오차(도), head 머리를 노릴 확률, turn 회전 속도(rad/s), strafe 좌우 이동 정도
+  // 난이도 설정값
+  //   react 적을 처음 본 뒤 쏘기까지 걸리는 시간(초)   aim 기본 조준 오차(도)   moveAim 적(나)이 움직일 때 추가되는 오차(도 per m/s)
+  //   head 머리를 노릴 확률   turn 조준 회전 속도(rad/s)   strafe 좌우 이동 정도   dmg 봇 데미지 배율
+  //   fov 시야 반각(라디안)   hear 총소리를 알아채는 거리(m)   burstOn/Off 연사 시간/쉬는 시간 범위(초)   pool 들고 나오는 주무기 후보
+  const ALL = ['ar', 'ar', 'burst', 'smg', 'smg', 'shotgun', 'sniper', 'lmg'];
   const DIFFS = {
-    easy:   { name: '쉬움',   react: 0.85, aim: 6.0, head: 0.04, turn: 3.0,  strafe: 0.5 },
-    normal: { name: '보통',   react: 0.5,  aim: 3.0, head: 0.10, turn: 5.0,  strafe: 0.8 },
-    hard:   { name: '어려움', react: 0.3,  aim: 1.4, head: 0.22, turn: 8.0,  strafe: 1.0 },
-    insane: { name: '지옥',   react: 0.15, aim: 0.5, head: 0.40, turn: 14.0, strafe: 1.25 },
+    rookie: { name: '입문',   react: 1.5,  aim: 4.5, moveAim: 1.0,  head: 0.0,  turn: 1.8,  strafe: 0.15, dmg: 0.5,  fov: 0.95, hear: 12, burstOn: [0.25, 0.5], burstOff: [0.9, 1.7],  pool: ['ar', 'smg'] },
+    easy:   { name: '쉬움',   react: 1.0,  aim: 3.6, moveAim: 0.7,  head: 0.02, turn: 2.4,  strafe: 0.35, dmg: 0.65, fov: 1.0,  hear: 18, burstOn: [0.3, 0.7],  burstOff: [0.6, 1.3],  pool: ['ar', 'smg', 'burst'] },
+    normal: { name: '보통',   react: 0.7,  aim: 3.0, moveAim: 0.55, head: 0.07, turn: 4.2,  strafe: 0.7,  dmg: 0.7,  fov: 1.1,  hear: 26, burstOn: [0.5, 1.0],  burstOff: [0.5, 1.1], pool: ['ar', 'smg', 'burst', 'shotgun'] },
+    hard:   { name: '어려움', react: 0.35, aim: 1.4, moveAim: 0.25, head: 0.18, turn: 7.0,  strafe: 1.0,  dmg: 1.0,  fov: 1.15, hear: 32, burstOn: [0.8, 1.6],  burstOff: [0.2, 0.6],  pool: ALL },
+    insane: { name: '지옥',   react: 0.16, aim: 0.5, moveAim: 0.1,  head: 0.4,  turn: 14.0, strafe: 1.25, dmg: 1.1,  fov: 1.15, hear: 40, burstOn: [1.2, 2.4],  burstOff: [0.1, 0.3],  pool: ALL },
   };
   const NAMES = ['Viper', 'Ghost', 'Nova', 'Blaze', 'Echo', 'Rogue', 'Hawk', 'Frost', 'Zed', 'Pixel', 'Kuma', 'Rex', 'Luna', 'Orca', 'Jinx', 'Volt'];
-  const PRIMARIES = ['ar', 'ar', 'burst', 'smg', 'smg', 'shotgun', 'sniper', 'lmg'];
+  const PRIMARIES = ALL;
 
   const angDiff = (a, b) => { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -130,14 +135,15 @@
 
     // ---------------- 봇 생성/제거 ----------------
     function spawn(opts) { // opts: { team, name, diff, x, z, yaw, primary }
-      const pid = opts.primary || PRIMARIES[Math.floor(Math.random() * PRIMARIES.length)];
+      const D0 = DIFFS[opts.diff] || DIFFS.normal;
+      const pid = opts.primary || D0.pool[Math.floor(Math.random() * D0.pool.length)];
       const m = RivalModels.humanoid(opts.team, pid, opts.name);
       m.tag.visible = opts.team === 'A' && !opts.dummy; // 이름표는 아군만(과녁 제외)
       const b = {
         isBot: true, id: 'bot' + Math.random().toString(36).slice(2, 7), name: opts.name, team: opts.team,
         x: opts.x, z: opts.z, y: 1.7, vy: 0, onGround: true, yaw: opts.yaw, pitch: 0,
         hp: 100, alive: true, firedT: 0, kills: 0, deaths: 0,
-        diff: DIFFS[opts.diff] || DIFFS.normal,
+        diff: D0, bursting: false, burstT: 0.2, tgtPrev: null, tgtSpeed: 0, hadSight: false,
         gun: W.create(pid), pistol: W.create('pistol'),
         mesh: m, target: null, targetVisible: false, lastSeen: null, lastSeenT: -99, reactT: 0.5, aimHead: false,
         percT: Math.random() * 0.12, strafeDir: 0, strafeT: 0, path: null, pathT: 0, huntT: 0, goal: null,
@@ -172,20 +178,27 @@
         const dist = Math.hypot(dx, dy, dz);
         if (dist > 75 || dist >= bd) continue;
         const ang = angDiff(b.yaw, Math.atan2(-dx, -dz));
-        const heard = e.firedT > 0 && dist < 32; // 총소리가 들리면 방향을 알아챔
-        if (Math.abs(ang) > 1.15 && dist > 7 && !heard) continue; // 시야각 약 130도
+        const heard = e.firedT > 0 && dist < b.diff.hear; // 총소리가 들리면 방향을 알아챔 (난이도마다 거리 다름)
+        if (Math.abs(ang) > b.diff.fov && dist > 5 && !heard) continue; // 시야각 (난이도마다 다름)
         const t = phys.rayBoxes(b.x, b.y, b.z, dx / dist, dy / dist, dz / dist, dist);
         if (t < dist - 0.6) continue; // 중간에 벽이 있음
         if (G.smoked(b.x, b.y, b.z, e.x, e.y - 0.5, e.z)) continue; // 연막 속
         best = e; bd = dist;
       }
       if (best) {
+        // 목표가 얼마나 빨리 움직이는지(움직이는 적은 맞히기 어렵게 오차에 반영)
+        if (b.tgtPrev && b.tgtPrev.id === best.id && now - b.tgtPrev.t > 0.05) {
+          const sp = Math.hypot(best.x - b.tgtPrev.x, best.z - b.tgtPrev.z) / (now - b.tgtPrev.t);
+          b.tgtSpeed = b.tgtSpeed * 0.6 + Math.min(sp, 9) * 0.4;
+        }
+        b.tgtPrev = { id: best.id, x: best.x, z: best.z, t: now };
         if (b.target !== best) { b.target = best; b.reactT = b.diff.react * (0.8 + Math.random() * 0.4); b.aimHead = Math.random() < b.diff.head; }
-        b.targetVisible = true;
+        else if (!b.hadSight) b.reactT = Math.max(b.reactT, b.diff.react * 0.5); // 숨었다가 다시 나타난 적에게도 반응 시간이 필요
+        b.targetVisible = true; b.hadSight = true;
         b.lastSeen = { x: best.x, z: best.z };
         b.lastSeenT = now;
       } else {
-        b.targetVisible = false;
+        b.targetVisible = false; b.hadSight = false; b.tgtSpeed = 0;
         if (b.target && now - b.lastSeenT > 3.5) b.target = null;
       }
     }
@@ -235,7 +248,13 @@
         turnToward(b, wantYaw, wantPitch, dt);
         b.reactT -= dt;
         const err = Math.abs(angDiff(b.yaw, wantYaw)) + Math.abs(wantPitch - b.pitch);
-        if (b.reactT <= 0 && err < 0.07 && dist < w.range[1] * 0.9) trigger = true;
+        if (b.reactT <= 0 && err < 0.07 && dist < w.range[1] * 0.9) {
+          trigger = true;
+          // 사람처럼 짧게 몰아 쏘고 쉬기를 반복(난이도가 낮을수록 쉬는 시간이 김)
+          b.burstT -= dt;
+          if (b.burstT <= 0) { b.bursting = !b.bursting; const r = b.bursting ? D.burstOn : D.burstOff; b.burstT = r[0] + Math.random() * (r[1] - r[0]); }
+          if (!b.bursting) trigger = false;
+        }
 
         // 거리 유지 + 좌우 이동(스트레이프)
         const pref = preferredDist(w);
@@ -293,7 +312,9 @@
       if (shots > 0) {
         const dirX = -Math.sin(b.yaw) * Math.cos(b.pitch), dirY = Math.sin(b.pitch), dirZ = -Math.cos(b.yaw) * Math.cos(b.pitch);
         const base = w.scope ? w.spread[1] : (w.spread[0] + w.spread[1]) / 2;
-        G.shoot(b, b.x, b.y, b.z, dirX, dirY, dirZ, w, Math.hypot(base * 0.6, D.aim));
+        // 오차 = 기본 오차 + 상대가 움직이는 속도 + 내가 좌우로 움직이는 중이면 조금 더
+        const aimErr = D.aim + b.tgtSpeed * D.moveAim + (b.strafeDir ? D.aim * 0.25 : 0);
+        G.shoot(b, b.x, b.y, b.z, dirX, dirY, dirZ, w, Math.hypot(base * 0.6, aimErr));
       }
     }
 
