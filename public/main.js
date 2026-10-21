@@ -96,8 +96,8 @@
     return w.name + ': ' + w.desc + ' — 데미지 ' + w.dmg + (w.pellets ? '×' + w.pellets : '') + ', 탄창 ' + w.mag + '발, 재장전 ' + reload;
   }
 
-  function renderLoadout() {
-    const box = $('loadout');
+  // 무기 고르기 칩 목록을 box 안에 그림. 로비와 사격장(일시정지 화면)에서 같이 씀.
+  function renderLoadoutInto(box, infoEl, onPick) {
     box.innerHTML = '';
     [['primary', '주무기'], ['secondary', '보조'], ['melee', '근접'], ['utility', '유틸']].forEach(([slot, label]) => {
       const row = document.createElement('div'); row.className = 'slotrow';
@@ -106,12 +106,13 @@
         const b = document.createElement('button');
         b.className = 'chip' + (settings.loadout[slot] === id ? ' on' : '');
         b.textContent = W.list[id].name;
-        b.onclick = () => { settings.loadout[slot] = id; saveSettings(); renderLoadout(); $('weapon-info').textContent = weaponInfoText(id); };
+        b.onclick = () => { settings.loadout[slot] = id; saveSettings(); renderLoadoutInto(box, infoEl, onPick); infoEl.textContent = weaponInfoText(id); if (onPick) onPick(slot); };
         row.appendChild(b);
       });
       box.appendChild(row);
     });
   }
+  function renderLoadout() { renderLoadoutInto($('loadout'), $('weapon-info'), null); }
 
   function initSettingsUI() {
     $('set-mode').value = String(settings.mode);
@@ -177,9 +178,21 @@
     gunCam = new THREE.PerspectiveCamera(55, 1, 0.01, 10);
     makeFx();
     botsApi = RivalBots.create({ scene, phys, boxes, phase: () => match.phase, enemiesOf, shoot, smoked });
-    window.addEventListener('resize', resize);
     resize();
   }
+
+  // 모바일 브라우저는 주소창 때문에 CSS의 100vh가 실제 보이는 높이보다 커서 화면이 잘림.
+  // 그래서 지금 실제로 보이는 크기(innerWidth/innerHeight)를 CSS 변수로 넘겨서 모든 화면이 그 크기에 딱 맞게 함.
+  function fitApp() {
+    const w = window.innerWidth, h = window.innerHeight;
+    document.documentElement.style.setProperty('--app-w', w + 'px');
+    document.documentElement.style.setProperty('--app-h', h + 'px');
+    resize();
+  }
+  window.addEventListener('resize', fitApp);
+  window.addEventListener('orientationchange', () => { setTimeout(fitApp, 150); setTimeout(fitApp, 600); });
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', fitApp);
+  fitApp();
 
   function resize() {
     if (!renderer) return;
@@ -273,6 +286,7 @@
     Sfx.shot(w.sfx, isMe ? 1 : Math.max(0, 1 - dP / 60) * 0.7);
     const mz = muzzlePos(shooter, dx, dy, dz);
     const n = w.pellets || 1;
+    let anyHit = false;
     for (let i = 0; i < n; i++) {
       const d = spreadDir(dx, dy, dz, spread);
       const r = castRay(shooter, ox, oy, oz, d[0], d[1], d[2], 300);
@@ -280,11 +294,12 @@
       if (r.e) {
         let dmg = w.dmg * W.falloff(w, r.t);
         if (r.head) dmg *= w.head; else if (py < r.e.y - EYE + 0.7) dmg *= 0.85; // 다리는 약간 약함
-        spark(px, py, pz, 0xff3030);
+        spark(px, py, pz, 0xff3030); anyHit = true;
         damage(r.e, dmg, r.head, shooter, w);
       } else if (r.wall) spark(px, py, pz, 0xffc060);
       tracer(mz[0], mz[1], mz[2], px, py, pz);
     }
+    if (isMe) { rangeStats.shots++; if (anyHit) rangeStats.hits++; }
   }
 
   function damage(t, amount, head, attacker, w) {
@@ -292,14 +307,14 @@
     amount = Math.max(1, Math.round(amount));
     t.hp = Math.max(0, t.hp - amount);
     if (t === P) { dmgT = Math.min(0.8, dmgT + 0.4); if (now - lastHurt > 0.12) { lastHurt = now; Sfx.hurt(); } } else t.flash = 0.12;
-    if (attacker === P) { hitmark(head); Sfx.hit(head); }
+    if (attacker === P && t !== P) { hitmark(head); Sfx.hit(head); if (head) rangeStats.heads++; rangeStats.last = amount + (head ? ' (헤드샷)' : ''); }
     if (t.hp <= 0) kill(t, attacker, head, w);
   }
 
   function kill(t, a, head, w) {
     t.alive = false; t.deaths++;
     if (a !== t) a.kills++; // 수류탄 자폭은 킬로 세지 않음
-    if (a === P && a !== t) { match.kills++; Sfx.kill(); }
+    if (a === P && a !== t) { match.kills++; rangeStats.kills++; Sfx.kill(); }
     if (t === P) { match.deaths++; inp.adsToggle = false; $('btn-ads').classList.remove('on'); P.flashT = 0; }
     feed(a === t ? t.name + '  [' + w.name + ' 자폭]' : a.name + '  [' + w.name + (head ? ' · 헤드샷' : '') + ']  ' + t.name, a === P || t === P);
     checkRoundEnd();
@@ -324,9 +339,10 @@
   // =====================================================================
   // 매치 / 라운드
   // =====================================================================
-  const match = { phase: 'idle', round: 0, score: { A: 0, B: 0 }, timer: 0, phaseT: 0, teamSize: 2, diff: 'normal', kills: 0, deaths: 0, lastCount: 99 };
+  const match = { mode: 'match', phase: 'idle', round: 0, score: { A: 0, B: 0 }, timer: 0, phaseT: 0, teamSize: 2, diff: 'normal', kills: 0, deaths: 0, lastCount: 99 };
 
   function startMatch() {
+    match.mode = 'match';
     P.name = myNick || '나';
     match.teamSize = settings.mode; match.diff = settings.diff;
     match.round = 0; match.score.A = match.score.B = 0; match.kills = match.deaths = 0; match.phase = 'ready';
@@ -335,6 +351,65 @@
     $('feed').innerHTML = '';
     setBanner('');
     showOverlay('준비 완료', (match.teamSize + ' vs ' + match.teamSize + ' · ' + botsApi.DIFFS[match.diff].name + ' · ' + WIN_ROUNDS + '선승'), '시작');
+  }
+
+
+  // =====================================================================
+  // 사격장 (연습 모드): 고정/움직이는 과녁, 거리 표시, 명중률 통계, 무기 자유 교체
+  // =====================================================================
+  const rangeStats = { shots: 0, hits: 0, heads: 0, kills: 0, last: '-' };
+  const rangeLabels = [];
+  let rangeT = 1.5, rangeUtilT = 2;
+
+  function resetRangeStats() { rangeStats.shots = rangeStats.hits = rangeStats.heads = rangeStats.kills = 0; rangeStats.last = '-'; }
+
+  function startRange() {
+    match.mode = 'range'; match.phase = 'ready'; match.round = 0;
+    match.score.A = match.score.B = 0; match.kills = match.deaths = 0;
+    P.name = myNick || '나'; P.kills = P.deaths = 0;
+    $('result').classList.add('hidden'); sbOpen = false; $('feed').innerHTML = ''; setBanner('');
+    showOverlay('🎯 사격장', '과녁을 쏴서 연습해요. 무기는 일시정지(PC: Esc / 폰: 무기 버튼)에서 바꿀 수 있어요.', '입장');
+  }
+
+  function clearRange() {
+    rangeLabels.forEach((l) => { scene.remove(l); l.material.map.dispose(); l.material.dispose(); });
+    rangeLabels.length = 0;
+  }
+
+  function startRangeSession() {
+    match.mode = 'range'; match.phase = 'live';
+    botsApi.clear(); clearThrown(); clearRange(); resetRangeStats();
+    setupGuns();
+    spawnPoint = { x: 12, z: 18.5, yaw: 0 };
+    Object.assign(P, { x: 12, y: EYE, z: 18.5, vy: 0, onGround: true, yaw: 0, pitch: 0, hp: 100, alive: true, firedT: 0, flashT: 0 });
+    deadCamY = EYE; recoilAcc = 0; rangeT = 1.5; rangeUtilT = 2;
+    const dummy = (x, z, track) => botsApi.spawn({ team: 'B', name: '과녁', diff: 'easy', x, z, yaw: Math.PI, primary: 'ar', dummy: true, track });
+    [[8.5, '10m'], [-1.5, '20m'], [-11.5, '30m'], [-21.5, '40m']].forEach(([z, label]) => { // 고정 과녁 + 거리 표지
+      dummy(12, z, null);
+      const tag = RivalModels.nameTag(label, 'A'); tag.position.set(8.2, 2.0, z); scene.add(tag); rangeLabels.push(tag);
+    });
+    dummy(12, 13, { x0: 9.6, x1: 16, speed: 2 });   // 움직이는 과녁 (가까움/보통/빠름)
+    dummy(12, 3, { x0: 9.6, x1: 16, speed: 3.5 });
+    dummy(12, -7, { x0: 9.6, x1: 16, speed: 5 });
+    setBanner('🎯 과녁을 쏴 보세요<small>왼쪽 숫자는 거리(m) · 과녁은 죽어도 2초 뒤 다시 나와요</small>', 4);
+  }
+
+  // 사격장에서만 필요한 갱신: 내가 죽으면 되살리기, 유틸리티 다시 채우기
+  function updateRange(dt) {
+    if (match.mode !== 'range' || match.phase !== 'live') return;
+    if (!P.alive) {
+      rangeT -= dt;
+      if (rangeT <= 0) { P.alive = true; P.hp = 100; Object.assign(P, { x: spawnPoint.x, z: spawnPoint.z, y: EYE, vy: 0, flashT: 0 }); deadCamY = EYE; setBanner(''); rangeT = 1.5; }
+    }
+    const u = guns[3];
+    if (u && u.ammo <= 0 && nades.length === 0) { rangeUtilT -= dt; if (rangeUtilT <= 0) { u.ammo = 1; rangeUtilT = 2; } } else rangeUtilT = 2;
+  }
+
+  // 무기를 바꾸면 그 칸 무기를 손에 듦
+  function applyLoadoutInRange(slot) {
+    const idx = { primary: 0, secondary: 1, melee: 2, utility: 3 }[slot];
+    setupGuns();
+    cur = idx; lastCur = 0; setViewmodel(guns[cur].id); renderSlots();
   }
 
   function setupGuns() {
@@ -363,7 +438,7 @@
   function hpSum(team) { return all().filter((e) => e.team === team && e.alive).reduce((s, e) => s + e.hp, 0); }
 
   function checkRoundEnd(timeUp) {
-    if (match.phase !== 'live') return;
+    if (match.phase !== 'live' || match.mode === 'range') return;
     const a = aliveCount('A'), b = aliveCount('B');
     if (b === 0) endRound('A', '적을 모두 처치!');
     else if (a === 0) endRound('B', '팀이 전멸했어요');
@@ -388,7 +463,7 @@
       const c = Math.ceil(match.phaseT);
       if (c !== match.lastCount && c > 0) { match.lastCount = c; Sfx.beep(false); setBanner(c + '<small>라운드 ' + match.round + '</small>', 0); }
       if (match.phaseT <= 0) { match.phase = 'live'; match.timer = ROUND_TIME; Sfx.beep(true); setBanner('시작!', 0.8); }
-    } else if (match.phase === 'live') {
+    } else if (match.phase === 'live' && match.mode !== 'range') {
       match.timer -= dt;
       if (match.timer <= 0) { match.timer = 0; checkRoundEnd(true); }
     } else if (match.phase === 'between') {
@@ -448,11 +523,12 @@
       best = e; bd = dist;
     }
     swingT = 0.22; Sfx.shot('swing', 1);
+    rangeStats.shots++; if (best) rangeStats.hits++;
     if (best) damage(best, w.dmg, false, P, w);
   }
 
   function autoFireProbe(w) {
-    if (!(settings.auto && isTouch) || w.melee) return false;
+    if (!(settings.auto && isTouch) || w.melee || w.util) return false; // 근접/유틸리티는 사거리 값이 없음
     const d = camDir();
     return !!castRay(P, P.x, P.y, P.z, d[0], d[1], d[2], w.range[1]).e;
   }
@@ -730,7 +806,14 @@
     $('sb').classList.toggle('hidden', !sbOpen);
     if (sbOpen) { sbT -= dt; if (sbT <= 0) { sbT = 0.3; renderScoreboard(); } }
     if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0 && match.phase === 'live') $('banner').innerHTML = ''; }
-    if (!P.alive && match.phase === 'live') { if (!hudCache.dead) { hudCache.dead = 1; setBanner('사망<small>라운드가 끝날 때까지 기다려 주세요</small>', 0); } } else hudCache.dead = 0;
+    const inRange = match.mode === 'range';
+    $('hud-top').style.display = inRange ? 'none' : '';
+    $('range-hud').classList.toggle('hidden', !inRange);
+    if (inRange) {
+      const acc = rangeStats.shots ? Math.round(rangeStats.hits / rangeStats.shots * 100) : 0;
+      setText('range-hud', '🎯 명중률 ' + acc + '% (' + rangeStats.hits + '/' + rangeStats.shots + ') · 헤드샷 ' + rangeStats.heads + ' · 처치 ' + rangeStats.kills + ' · 마지막 ' + rangeStats.last + (isTouch ? '  [탭: 초기화]' : '  [T: 초기화]'));
+    }
+    if (!P.alive && match.phase === 'live' && !inRange) { if (!hudCache.dead) { hudCache.dead = 1; setBanner('사망<small>라운드가 끝날 때까지 기다려 주세요</small>', 0); } } else hudCache.dead = 0;
   }
 
   // =====================================================================
@@ -742,6 +825,7 @@
     now += dt;
     updateMatch(dt);
     updatePlayer(dt);
+    updateRange(dt);
     botsApi.update(dt, now, match.phase === 'live');
     updateThrown(dt);
     updateFx(dt);
@@ -770,25 +854,29 @@
   function showOverlay(title, sub, btn) {
     $('ov-title').textContent = title; $('ov-sub').textContent = sub; $('ov-resume').textContent = btn;
     $('overlay').classList.remove('hidden');
+    const arm = match.mode === 'range'; // 사격장이면 무기 고르기 목록을 보여줌
+    $('ov-arm').classList.toggle('hidden', !arm);
+    if (arm) { renderLoadoutInto($('ov-loadout'), $('ov-info'), applyLoadoutInRange); $('ov-info').textContent = weaponInfoText(settings.loadout.primary); }
     Object.keys(keys).forEach((k) => { keys[k] = false; });
     inp.fire = false; inp.adsHold = false; joy.x = joy.y = 0;
   }
   function hideOverlay() { $('overlay').classList.add('hidden'); }
 
-  function enterGame() {
+  function enterGame(mode) {
     show('game');
     if (!started) { started = true; initGL(); }
     Sfx.init();
     $('touch-ui').classList.toggle('hidden', !isTouch);
     camera.fov = settings.fov; camera.updateProjectionMatrix();
     mobilePlaying = false;
-    startMatch();
+    $('btn-arm').classList.toggle('hidden', mode !== 'range');
+    if (mode === 'range') startRange(); else startMatch();
     last = 0; cancelAnimationFrame(raf); raf = requestAnimationFrame(loop);
   }
 
   function resume() {
     Sfx.init();
-    if (match.phase === 'ready') startRound();
+    if (match.phase === 'ready') { if (match.mode === 'range') startRangeSession(); else startRound(); }
     if (!isTouch) { $('c').requestPointerLock(); return; }
     mobilePlaying = true; hideOverlay();
     try { // 전체화면 + 가로 고정 시도 (아이폰 사파리는 막혀 있어서 실패해도 괜찮음)
@@ -805,14 +893,15 @@
     inp.fire = false; inp.adsHold = false; inp.adsToggle = false;
     try { if (document.fullscreenElement) document.exitFullscreen(); } catch (e) {}
     if (document.pointerLockElement) document.exitPointerLock();
-    if (botsApi) botsApi.clear();
-    match.phase = 'idle';
+    if (botsApi) { botsApi.clear(); clearThrown(); clearRange(); }
+    match.phase = 'idle'; match.mode = 'match';
     $('result').classList.add('hidden'); showOverlayHidden();
     enterLobby();
   }
   function showOverlayHidden() { $('overlay').classList.add('hidden'); }
 
-  $('play-btn').onclick = enterGame;
+  $('play-btn').onclick = () => enterGame('match');
+  $('range-btn').onclick = () => enterGame('range');
   $('ov-resume').onclick = resume;
   $('ov-exit').onclick = leaveGame;
   $('res-lobby').onclick = leaveGame;
@@ -821,7 +910,7 @@
   document.addEventListener('pointerlockchange', () => {
     if ($('game').classList.contains('hidden')) return;
     if (document.pointerLockElement) hideOverlay();
-    else if (match.phase !== 'over' && match.phase !== 'idle') showOverlay('일시정지', '', '계속하기');
+    else if (match.phase !== 'over' && match.phase !== 'idle') showOverlay(match.mode === 'range' ? '🎯 사격장 일시정지' : '일시정지', '', '계속하기');
   });
 
   // =====================================================================
@@ -839,6 +928,7 @@
     else if (e.code === 'Digit2') switchTo(1);
     else if (e.code === 'Digit3') switchTo(2);
     else if (e.code === 'Digit4') switchTo(3);
+    else if (e.code === 'KeyT' && match.mode === 'range') resetRangeStats();
     else if (e.code === 'KeyQ') switchTo(lastCur);
   });
   document.addEventListener('keyup', (e) => { keys[e.code] = false; if (e.code === 'Tab') sbOpen = false; });
@@ -925,6 +1015,8 @@
     $('btn-ads').addEventListener('touchstart', (e) => { e.preventDefault(); inp.adsToggle = !inp.adsToggle; $('btn-ads').classList.toggle('on', inp.adsToggle); }, { passive: false });
     $('btn-reload').addEventListener('touchstart', (e) => { e.preventDefault(); doReload(); }, { passive: false });
     $('hud-top').addEventListener('touchstart', (e) => { e.preventDefault(); sbOpen = !sbOpen; sbT = 0; }, { passive: false });
+    $('range-hud').addEventListener('touchstart', (e) => { e.preventDefault(); resetRangeStats(); }, { passive: false });
+    $('btn-arm').addEventListener('touchstart', (e) => { e.preventDefault(); mobilePlaying = false; joy.x = joy.y = 0; showOverlay('🎯 사격장 일시정지', '', '계속하기'); }, { passive: false });
     $('btn-exit').addEventListener('touchstart', (e) => { e.preventDefault(); if (confirm('매치를 나갈까요? (기록은 저장되지 않아요)')) leaveGame(); }, { passive: false });
   })();
 
@@ -934,7 +1026,7 @@
       P, keys, inp, boxes, match, W, joy,
       get guns() { return guns; }, get cur() { return cur; }, get bots() { return botsApi.bots; },
       all, switchTo, doReload, startRound, castRay, get nav() { return botsApi.nav; },
-      get ads() { return adsT; }, nades, smokes, blasts, smoked, get sbOpen() { return sbOpen; },
+      get ads() { return adsT; }, rangeStats, startRangeSession, resetRangeStats, nades, smokes, blasts, smoked, get sbOpen() { return sbOpen; },
     };
   }
 

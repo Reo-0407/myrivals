@@ -2,7 +2,12 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0b0e14">
+<link rel="manifest" href="manifest.webmanifest">
 <title>MyRivals</title>
 <link rel="stylesheet" href="style.css">
 </head>
@@ -37,6 +42,7 @@
             <option value="insane">지옥</option>
           </select></div>
         <button id="play-btn" class="btn">매치 시작</button>
+        <button id="range-btn" class="btn ghost">🎯 사격장 (연습)</button>
 
         <h3>로드아웃 (들고 갈 무기)</h3>
         <div id="loadout"></div>
@@ -69,6 +75,7 @@
     <div id="flashov"></div>
     <div id="reloadbar" class="hidden"><i></i></div>
 
+    <div id="range-hud" class="hidden"></div>
     <div id="hud-top"><span id="sc-me">0</span><span id="sc-timer">1:30</span><span id="sc-foe">0</span><div id="sc-round"></div></div>
     <div id="feed"></div>
     <div id="hud-hp"><div class="bar"><i id="hp-fill"></i></div><b id="hp-text">100</b></div>
@@ -80,6 +87,7 @@
       <div class="ov-box">
         <h2 id="ov-title">RIVAL</h2>
         <p id="ov-sub" class="hint"></p>
+        <div id="ov-arm" class="hidden"><h3>무기 고르기</h3><div id="ov-loadout"></div><p id="ov-info" class="hint"></p></div>
         <button id="ov-resume" class="btn">시작</button>
         <button id="ov-exit" class="btn ghost">로비로 나가기</button>
       </div>
@@ -105,6 +113,7 @@
       <button id="btn-jump" class="tbtn jump">점프</button>
       <div id="touch-slots"></div>
       <button id="btn-exit" class="tbtn small">나가기</button>
+      <button id="btn-arm" class="tbtn small arm hidden">무기</button>
     </div>
     <div id="rotate-hint">📱 폰을 가로로 돌려주세요</div>
   </div>

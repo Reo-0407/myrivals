@@ -1,7 +1,9 @@
 * { box-sizing: border-box; }
 html, body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; overscroll-behavior: none; margin: 0; height: 100%; background: #0b0e14; color: #eaeef7; font-family: system-ui, 'Malgun Gothic', sans-serif; overflow: hidden; }
 .hidden { display: none !important; }
-.screen { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; overflow-y: auto; }
+.screen { position: fixed; left: 0; top: 0; width: var(--app-w, 100%); height: var(--app-h, 100dvh); display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 12px; padding: 16px; padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.screen > :first-child { margin-top: auto; }
+.screen > :last-child { margin-bottom: auto; }
 .logo { font-size: clamp(30px, 10vw, 64px); letter-spacing: 6px; margin: 0; color: #ff4d5e; text-shadow: 0 0 24px #ff4d5e66; }
 .logo.small { font-size: clamp(26px, 8vw, 36px); }
 .sub { margin: 0 0 8px; color: #9aa6c0; }
@@ -16,7 +18,7 @@ input { width: min(320px, 90vw); padding: 14px; font-size: 18px; border-radius: 
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { padding: 6px 4px; text-align: center; border-bottom: 1px solid #232b42; }
 td:nth-child(2), th:nth-child(2) { text-align: left; }
-#game { position: fixed; inset: 0; }
+#game { position: fixed; left: 0; top: 0; width: var(--app-w, 100%); height: var(--app-h, 100dvh); overflow: hidden; }
 #c { width: 100%; height: 100%; display: block; }
 
 /* ---- 모바일 조작 ---- */
@@ -83,9 +85,11 @@ details .row { margin-top: 10px; }
 #slots .s.on { background: #ff4d5ecc; border-color: #fff; }
 #banner { position: absolute; left: 0; right: 0; top: 28%; text-align: center; font-size: 44px; font-weight: 900; text-shadow: 0 0 10px #000, 0 0 3px #000; pointer-events: none; }
 #banner small { display: block; font-size: 18px; font-weight: 600; margin-top: 6px; }
-#overlay, #result { position: absolute; inset: 0; z-index: 6; background: #000b; display: flex; align-items: center; justify-content: center; padding: 16px; }
+#overlay, #result { position: absolute; inset: 0; z-index: 6; background: #000b; display: flex; padding: 16px; overflow-y: auto; }
 #overlay.hidden, #result.hidden { display: none !important; }
-.ov-box { display: flex; flex-direction: column; gap: 10px; align-items: center; text-align: center; max-width: 92vw; }
+.ov-box { display: flex; flex-direction: column; gap: 10px; align-items: center; text-align: center; max-width: 92vw; margin: auto; }
+#ov-arm { background: #141a29; border-radius: 12px; padding: 10px 12px; text-align: left; max-width: 92vw; }
+#ov-arm h3 { margin: 0 0 4px; font-size: 14px; color: #9aa6c0; }
 .ov-box h2 { margin: 0; font-size: 34px; }
 .ov-box p { margin: 0; }
 
@@ -124,3 +128,10 @@ details .row { margin-top: 10px; }
 #sb tr.a td:first-child { color: #8fc0ff; } #sb tr.b td:first-child { color: #ff9aa0; }
 #hud-top { pointer-events: auto; }
 #hud-top { z-index: 3; }
+
+/* ---- 사격장 ---- */
+#range-hud { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 3; background: #000a; padding: 6px 14px; border-radius: 12px; font-weight: 700; font-size: 15px; white-space: nowrap; max-width: 96vw; overflow: hidden; text-overflow: ellipsis; pointer-events: auto; }
+#range-hud.hidden { display: none !important; }
+.tbtn.small.arm { left: calc(max(12px, env(safe-area-inset-left)) + 72px); }
+.tbtn.small.arm.hidden { display: none !important; }
+@media (pointer: coarse) { #range-hud { font-size: 12px; padding: 5px 10px; } }

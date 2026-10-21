@@ -1,0 +1,9 @@
+{
+  "name": "MyRivals",
+  "short_name": "MyRivals",
+  "start_url": "/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0b0e14",
+  "theme_color": "#0b0e14"
+}

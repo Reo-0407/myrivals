@@ -132,7 +132,7 @@
     function spawn(opts) { // opts: { team, name, diff, x, z, yaw, primary }
       const pid = opts.primary || PRIMARIES[Math.floor(Math.random() * PRIMARIES.length)];
       const m = RivalModels.humanoid(opts.team, pid, opts.name);
-      m.tag.visible = opts.team === 'A'; // 이름표는 아군만
+      m.tag.visible = opts.team === 'A' && !opts.dummy; // 이름표는 아군만(과녁 제외)
       const b = {
         isBot: true, id: 'bot' + Math.random().toString(36).slice(2, 7), name: opts.name, team: opts.team,
         x: opts.x, z: opts.z, y: 1.7, vy: 0, onGround: true, yaw: opts.yaw, pitch: 0,
@@ -142,6 +142,7 @@
         mesh: m, target: null, targetVisible: false, lastSeen: null, lastSeenT: -99, reactT: 0.5, aimHead: false,
         percT: Math.random() * 0.12, strafeDir: 0, strafeT: 0, path: null, pathT: 0, huntT: 0, goal: null,
         stuckT: 0, lastPX: opts.x, lastPZ: opts.z, stuckCheckT: 0.5, walkPhase: 0, moving: false, flash: 0, deadT: 0, blindT: 0, muzzleT: 0,
+        dummy: !!opts.dummy, track: opts.track || null, trackT: 0, homeX: opts.x,
       };
       m.root.position.set(b.x, 0, b.z);
       m.root.rotation.y = b.yaw;
@@ -296,17 +297,30 @@
       }
     }
 
+    // 사격장 과녁: 생각하지 않고 서 있거나 좌우로 왕복만 함 (항상 플레이어 쪽(+z)을 봄)
+    function stepDummy(b, dt) {
+      b.yaw = Math.PI;
+      if (b.track) {
+        const t = b.track;
+        b.trackT += dt * t.speed / (t.x1 - t.x0);
+        const ph = b.trackT % 2, tri = ph < 1 ? ph : 2 - ph;
+        b.x = t.x0 + (t.x1 - t.x0) * tri;
+        b.moving = true;
+      } else b.moving = false;
+    }
+
     // ---------------- 매 프레임 ----------------
     function update(dt, now, live) {
       for (const b of bots) {
         const m = b.mesh;
         if (!b.alive) { // 쓰러지는 연출
           b.deadT += dt; m.tag.visible = false; if (m.flash) m.flash.visible = false;
+          if (b.dummy && b.deadT > 2.2) { b.alive = true; b.hp = 100; b.deadT = 0; m.root.rotation.x = 0; m.root.position.y = 0; continue; } // 과녁은 2초 뒤 다시 나옴
           m.root.rotation.x = Math.min(Math.PI / 2, b.deadT * 4);
           m.root.position.y = Math.min(0.15, b.deadT * 0.6); // 누운 몸이 바닥에 닿도록 살짝 띄움
           continue;
         }
-        if (live) think(b, dt, now); else { b.moving = false; phys.gravity(b, dt, false); }
+        if (b.dummy) stepDummy(b, dt); else if (live) think(b, dt, now); else { b.moving = false; phys.gravity(b, dt, false); }
         m.root.position.set(b.x, b.y - 1.7, b.z);
         m.root.rotation.y = b.yaw;
         if (b.moving) b.walkPhase += dt * 9;
