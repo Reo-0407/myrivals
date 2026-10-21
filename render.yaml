@@ -1,0 +1,8 @@
+# Render 블루프린트: 이 파일이 있으면 Render에서 "New > Blueprint"로 저장소를 고르기만 하면 설정이 자동으로 채워짐
+services:
+  - type: web
+    name: myrivals
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
