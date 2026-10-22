@@ -149,3 +149,7 @@ details .row { margin-top: 10px; }
 #help-body b { color: #ff8a95; }
 
 .tbtn.crouch { width: 60px; height: 60px; right: max(112px, calc(env(safe-area-inset-right) + 92px)); bottom: 190px; background: #ffffff33; font-size: 13px; }
+
+#spec { position: absolute; left: 50%; bottom: 74px; transform: translateX(-50%); z-index: 3; background: #000b; padding: 7px 16px; border-radius: 12px; font-weight: 700; font-size: 15px; white-space: nowrap; pointer-events: none; }
+#spec.hidden { display: none !important; }
+@media (pointer: coarse) { #spec { bottom: 98px; font-size: 13px; } }

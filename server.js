@@ -3,8 +3,17 @@ const express = require('express');
 const path = require('path');
 
 const app = express();
+app.set('trust proxy', 1);          // Render 같은 프록시 뒤에서도 접속자 주소를 제대로 읽음
+app.disable('x-powered-by');
+app.use((req, res, next) => {       // 기본 보안 헤더
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'same-origin');
+  next();
+});
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api', require('./rival-server'));
+app.use('/api', (req, res) => res.status(404).json({ error: '없는 주소예요.' }));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

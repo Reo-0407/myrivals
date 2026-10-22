@@ -505,7 +505,7 @@
   function startRound() {
     match.round++;
     match.phase = 'countdown'; match.phaseT = COUNTDOWN; match.lastCount = 99;
-    botsApi.clear(); clearThrown(); P.flashT = 0;
+    botsApi.clear(); clearThrown(); P.flashT = 0; specTarget = null; specIdx = 0;
     const sA = shuffle(world.spawns.A.slice()), sB = shuffle(world.spawns.B.slice());
     const n = match.teamSize, names = shuffle(botsApi.NAMES.slice());
     spawnPoint = sA[0];
@@ -935,7 +935,7 @@
       const acc = rangeStats.shots ? Math.round(rangeStats.hits / rangeStats.shots * 100) : 0;
       setText('range-hud', '🎯 명중률 ' + acc + '% (' + rangeStats.hits + '/' + rangeStats.shots + ') · 헤드샷 ' + rangeStats.heads + ' · 처치 ' + rangeStats.kills + ' · 마지막 ' + rangeStats.last + (isTouch ? '  [탭: 초기화]' : '  [T: 초기화]'));
     }
-    if (!P.alive && match.phase === 'live' && !inRange) { if (!hudCache.dead) { hudCache.dead = 1; setBanner('사망<small>라운드가 끝날 때까지 기다려 주세요</small>', 0); } } else hudCache.dead = 0;
+    if (!P.alive && match.phase === 'live' && !inRange) { if (!hudCache.dead) { hudCache.dead = 1; setBanner('사망<small>' + (botsApi.bots.some((b) => b.team === 'A' && b.alive) ? '아군 시점으로 관전 중이에요' : '라운드가 끝날 때까지 기다려 주세요') + '</small>', 3); } } else hudCache.dead = 0;
   }
 
   // =====================================================================
@@ -953,14 +953,36 @@
     botsApi.update(dt, now, match.phase === 'live');
     updateThrown(dt);
     updateFx(dt);
+    updateSpectate();
     updateHud(dt);
     $('radar').classList.toggle('hidden', match.mode === 'range');
     if (match.mode !== 'range') drawRadar(dt);
   }
 
+  // 관전: 내가 죽었을 때 살아 있는 아군 시점으로 봄(탭/클릭하면 다음 아군). 아군이 없으면 쓰러진 자리에서 바닥 시점.
+  let specIdx = 0, specTarget = null;
+  function updateSpectate() {
+    let t = null;
+    if (!P.alive && match.phase === 'live' && match.mode !== 'range') {
+      const allies = botsApi.bots.filter((b) => b.team === 'A' && b.alive);
+      if (allies.length) t = allies[((specIdx % allies.length) + allies.length) % allies.length];
+    }
+    if (t !== specTarget) {
+      if (specTarget && specTarget.mesh) specTarget.mesh.root.visible = true; // 이전에 보던 아군 몸 다시 보이게
+      specTarget = t;
+    }
+    if (t) t.mesh.root.visible = false; // 그 아군의 눈 위치에서 보니까 몸이 시야를 가리지 않게 숨김
+    const el = $('spec');
+    el.classList.toggle('hidden', !t);
+    if (t) setText('spec', '👁 관전 중: ' + t.name + (isTouch ? '  (화면을 탭하면 다음 아군)' : '  (클릭하면 다음 아군)'));
+  }
+
   function render() {
-    camera.position.set(P.x, deadCamY, P.z);
-    camera.rotation.set(P.pitch + (P.alive ? 0 : -0.5), P.yaw, 0);
+    if (specTarget) { camera.position.set(specTarget.x, specTarget.y, specTarget.z); camera.rotation.set(specTarget.pitch, specTarget.yaw, 0); }
+    else {
+      camera.position.set(P.x, deadCamY, P.z);
+      camera.rotation.set(P.pitch + (P.alive ? 0 : -0.5), P.yaw, 0);
+    }
     renderer.clear();
     renderer.render(scene, camera);
     if (vm && vm.visible) { renderer.clearDepth(); renderer.render(gunScene, gunCam); }
@@ -1067,7 +1089,7 @@
   });
   document.addEventListener('mousedown', (e) => {
     if (!document.pointerLockElement) return;
-    if (e.button === 0) inp.fire = true; else if (e.button === 2) inp.adsHold = true;
+    if (e.button === 0) { inp.fire = true; if (!P.alive) specIdx++; } else if (e.button === 2) inp.adsHold = true;
   });
   document.addEventListener('mouseup', (e) => {
     if (e.button === 0) inp.fire = false; else if (e.button === 2) inp.adsHold = false;
@@ -1118,6 +1140,7 @@
     // 오른쪽: 드래그로 시점 회전
     $('look-zone').addEventListener('touchstart', (e) => {
       e.preventDefault();
+      if (!P.alive) specIdx++; // 죽어서 관전 중이면 탭 = 다음 아군
       if (lookId !== null) return;
       const t = e.changedTouches[0];
       lookId = t.identifier; lookLast = { x: t.clientX, y: t.clientY };
@@ -1171,7 +1194,7 @@
       P, keys, inp, boxes, match, W, joy,
       get guns() { return guns; }, get cur() { return cur; }, get bots() { return botsApi.bots; },
       all, switchTo, doReload, startRound, castRay, get nav() { return botsApi.nav; },
-      get ads() { return adsT; }, settings, get world() { return world; }, loadMap, get curMap() { return curMap; }, mem: () => ({ children: scene.children.length, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, nades: nades.length, smokes: smokes.length, blasts: blasts.length }), step: (n, dt) => { for (let i = 0; i < n; i++) update(dt); }, rangeStats, startRangeSession, resetRangeStats, nades, smokes, blasts, smoked, get sbOpen() { return sbOpen; },
+      get ads() { return adsT; }, get spec() { return specTarget; }, settings, get world() { return world; }, loadMap, get curMap() { return curMap; }, mem: () => ({ children: scene.children.length, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, nades: nades.length, smokes: smokes.length, blasts: blasts.length }), step: (n, dt) => { for (let i = 0; i < n; i++) update(dt); }, rangeStats, startRangeSession, resetRangeStats, nades, smokes, blasts, smoked, get sbOpen() { return sbOpen; },
     };
   }
 
