@@ -5,8 +5,8 @@
 
   function create(boxes) {
     // (x,y,z)에 서 있을 때 겹치는 상자들 중 가장 높은 윗면 높이. 안 겹치면 null
-    function blockTop(x, y, z) {
-      const feet = y - EYE, head = y + 0.2;
+    function blockTop(x, y, z, eyeArg) { // eyeArg: 앉았을 때처럼 눈높이가 다르면 그 값 (기본 1.7m)
+      const eye = eyeArg || EYE, feet = y - eye, head = y + 0.2;
       let top = null;
       for (let i = 0; i < boxes.length; i++) {
         const b = boxes[i];
@@ -17,21 +17,23 @@
       }
       return top;
     }
-    const hitsBox = (x, y, z) => blockTop(x, y, z) !== null;
+    const hitsBox = (x, y, z, eye) => blockTop(x, y, z, eye) !== null;
 
     // 이동 시도: 막히면 계단 높이(0.55m) 이하일 때 올라서고, 아니면 막힘
     function tryMove(e, nx, nz) {
-      const top = blockTop(nx, e.y, nz);
+      const eye = e.eye || EYE;
+      const top = blockTop(nx, e.y, nz, eye);
       if (top === null) { e.x = nx; e.z = nz; return; }
       if (!e.onGround) return;
-      const need = top - (e.y - EYE);
-      if (need > 0 && need <= STEP_H && !hitsBox(nx, e.y + need + 0.02, nz)) {
+      const need = top - (e.y - eye);
+      if (need > 0 && need <= STEP_H && !hitsBox(nx, e.y + need + 0.02, nz, eye)) {
         e.y += need + 0.02; e.x = nx; e.z = nz;
       }
     }
 
     // 중력 + 점프 + 착지 + 머리 부딪힘
     function gravity(e, dt, jump) {
+      const eye = e.eye || EYE;
       if (jump && e.onGround) { e.vy = 7.5; e.onGround = false; }
       e.vy -= 20 * dt;
       let ny = e.y + e.vy * dt;
@@ -41,10 +43,10 @@
         for (let i = 0; i < boxes.length; i++) {
           const b = boxes[i];
           if (e.x + RADIUS > b.minX && e.x - RADIUS < b.maxX && e.z + RADIUS > b.minZ && e.z - RADIUS < b.maxZ
-              && e.y - EYE >= b.maxY - 0.05 && b.maxY > floorY) floorY = b.maxY;
+              && e.y - eye >= b.maxY - 0.05 && b.maxY > floorY) floorY = b.maxY;
         }
-        if (ny - EYE <= floorY) { ny = floorY + EYE; e.vy = 0; e.onGround = true; }
-      } else if (hitsBox(e.x, ny, e.z)) {
+        if (ny - eye <= floorY) { ny = floorY + eye; e.vy = 0; e.onGround = true; }
+      } else if (hitsBox(e.x, ny, e.z, eye)) {
         e.vy = 0; ny = e.y;
       }
       e.y = ny;

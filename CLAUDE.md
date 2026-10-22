@@ -8,13 +8,17 @@
 - 효과음은 Web Audio로 직접 합성. 음원/그림 파일 없음.
 
 ## 파일
-`server.js`, `rival-server.js`(API, `data/rival.json` 저장), `public/`(index.html, main.js, weapons.js, maps.js, models.js, bots.js, physics.js, audio.js, style.css). 자세한 설명은 README.md.
+`server.js`, `rival-server.js`(API, `data/rival.json` 저장), `public/`(index.html, main.js, weapons.js, maps.js, map-village.js, models.js, bots.js, physics.js, audio.js, style.css). 자세한 설명은 README.md.
 
 ## 최근 추가
 - 로비 `🎯 사격장`(`match.mode==='range'`): 과녁은 `bots.js`의 `dummy` 봇. 라운드/타이머 규칙은 꺼짐.
 - 화면 크기는 `fitApp()`이 `--app-w/--app-h` CSS 변수로 실제 보이는 크기에 맞춤(모바일 주소창 때문에 잘리는 문제 방지).
 - 난이도 기본값: 폰 `입문`/PC `쉬움`. 설정 버전(`SETTINGS_VER`)을 올리면 저장된 난이도·보조 설정이 새 기본값으로 초기화됨.
 - 아군 봇은 적보다 한 단계 높은 난이도로 나온다.
+
+- 맵은 `RivalMap.register`로 등록(`maps.js`에 창고, `map-village.js`에 사막 마을). `main.js`의 `loadMap(id)`가 맵 교체 + 봇 길찾기 격자 재생성. 사격장은 항상 창고 맵.
+- 앉기: `P.eye`(1.7↔1.2). 물리(`physics.js`)와 판정은 캐릭터의 `eye` 값을 사용(없으면 1.7).
+- 폰을 세로로 들면 게임 일시정지(`running()`), 창 전환 시 입력 해제.
 
 ## 규칙
 - 접속하면 닉네임 입력 → 로비. 관리자/로그인 화면은 만들지 않는다.

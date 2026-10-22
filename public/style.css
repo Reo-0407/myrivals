@@ -147,3 +147,5 @@ details .row { margin-top: 10px; }
 #help.hidden { display: none !important; }
 #help-body { text-align: left; font-size: 15px; line-height: 1.7; max-width: 560px; }
 #help-body b { color: #ff8a95; }
+
+.tbtn.crouch { width: 60px; height: 60px; right: max(112px, calc(env(safe-area-inset-right) + 92px)); bottom: 190px; background: #ffffff33; font-size: 13px; }

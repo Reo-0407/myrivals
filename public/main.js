@@ -39,7 +39,7 @@
   // 설정 (브라우저에 저장)
   // =====================================================================
   const SETTINGS_VER = 2; // 올리면 모든 사람의 난이도/보조 설정이 새 기본값으로 한 번 초기화됨
-  const defaults = { v: SETTINGS_VER, sens: 1, fov: 80, auto: isTouch, assist: isTouch ? 2 : 0, mode: 2, diff: isTouch ? 'rookie' : 'easy', loadout: { primary: 'ar', secondary: 'pistol', melee: 'knife', utility: 'frag' } };
+  const defaults = { v: SETTINGS_VER, sens: 1, fov: 80, auto: isTouch, assist: isTouch ? 2 : 0, mode: 2, diff: isTouch ? 'rookie' : 'easy', map: 'warehouse', loadout: { primary: 'ar', secondary: 'pistol', melee: 'knife', utility: 'frag' } };
   let settings = Object.assign({}, defaults);
   try {
     const saved = JSON.parse(safeGet('rival_settings') || '{}');
@@ -122,6 +122,11 @@
 
   function initSettingsUI() {
     $('set-mode').value = String(settings.mode);
+    const mapSel = $('set-map'); mapSel.innerHTML = '';
+    RivalMap.list().forEach((m) => { const o = document.createElement('option'); o.value = m.id; o.textContent = m.name; mapSel.appendChild(o); });
+    if (!RivalMap.has(settings.map)) settings.map = 'warehouse';
+    mapSel.value = settings.map;
+    mapSel.onchange = (e) => { settings.map = e.target.value; saveSettings(); };
     $('set-diff').value = settings.diff;
     $('set-sens').value = settings.sens; $('v-sens').textContent = settings.sens;
     $('set-fov').value = settings.fov; $('v-fov').textContent = settings.fov;
@@ -145,11 +150,11 @@
       ? '<p><b>이동</b>: 왼쪽 화면을 누른 채 밀기 (끝까지 밀면 달리기)</p>' +
         '<p><b>시점</b>: 오른쪽 화면을 드래그</p>' +
         '<p><b>발사</b>: 빨간 발사 버튼을 누르는 동안 발사. <b>누른 채로 손가락을 움직이면 시점도 같이 돌아가요!</b> (왼쪽에도 작은 발사 버튼이 있어요)</p>' +
-        '<p><b>조준</b>: 파란 버튼 (한 번 누르면 켜지고 다시 누르면 꺼져요) · <b>장전</b>: 노란 버튼 · <b>점프</b>: 회색 버튼</p>' +
+        '<p><b>조준</b>: 파란 버튼 (한 번 누르면 켜지고 다시 누르면 꺼져요) · <b>장전</b>: 노란 버튼 · <b>점프</b>: 회색 버튼 · <b>앉기</b>: 작은 회색 버튼(누를 때마다 앉기/서기, 낮은 상자 뒤에 숨을 수 있어요)</p>' +
         '<p><b>무기 교체</b>: 화면 아래쪽 무기 이름 버튼 · <b>점수판</b>: 위쪽 점수 상자 탭</p>' +
         '<p>💡 <b>에임 보조</b>와 <b>자동 발사</b>가 켜져 있어서, 적 쪽을 대충 보면 시점이 살짝 끌려가고 자동으로 쏴요. (로비 설정에서 끌 수 있어요)</p>' +
         '<p>💡 처음엔 <b>🎯 사격장</b>에서 연습하고, 난이도는 <b>입문</b>으로 시작해 보세요. 폰은 <b>가로</b>로 돌려서 하세요.</p>'
-      : '<p><b>이동</b>: WASD · <b>달리기</b>: Shift · <b>점프</b>: Space</p>' +
+      : '<p><b>이동</b>: WASD · <b>달리기</b>: Shift · <b>점프</b>: Space · <b>앉기</b>: C 누르는 동안</p>' +
         '<p><b>시점</b>: 마우스 · <b>발사</b>: 좌클릭 · <b>조준</b>: 우클릭 · <b>장전</b>: R</p>' +
         '<p><b>무기 교체</b>: 1·2·3·4 또는 마우스 휠, Q(직전 무기) · <b>점수판</b>: Tab</p>' +
         '<p><b>일시정지</b>: Esc (사격장에서는 이때 무기를 바꿀 수 있어요)</p>' +
@@ -178,7 +183,7 @@
   const inp = { fire: false, adsHold: false, adsToggle: false };
 
   // 플레이어 (봇과 같은 모양의 entity)
-  const P = { id: 'me', name: '나', team: 'A', isBot: false, x: 0, y: EYE, z: 27, vy: 0, onGround: true, yaw: 0, pitch: 0, hp: 100, alive: true, firedT: 0, kills: 0, deaths: 0, flashT: 0 };
+  const P = { id: 'me', name: '나', team: 'A', isBot: false, x: 0, y: EYE, eye: EYE, z: 27, vy: 0, onGround: true, yaw: 0, pitch: 0, hp: 100, alive: true, firedT: 0, kills: 0, deaths: 0, flashT: 0 };
   let guns = [], cur = 0, lastCur = 0, switchT = 0;
   let adsT = 0, recoilAcc = 0, vmKick = 0, vmRaise = 0, swingT = 0, flashT = 0, dmgT = 0, hmT = 0, xhGap = 8, bannerT = 0, deadCamY = EYE;
   let lastHurt = 0, vm = null, curFov = 80, spawnPoint = { x: 0, z: 27, yaw: 0 };
@@ -196,17 +201,32 @@
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x9db7d4);
     scene.fog = new THREE.Fog(0x9db7d4, 45, 130);
-    world = RivalMap.build(scene, { shadows: !isTouch });
-    world.boxes.forEach((b) => boxes.push(b));
-    phys = Phys.create(boxes);
     // 손에 든 총은 별도 장면에 그려서 벽에 파묻히지 않게 함
     gunScene = new THREE.Scene();
     gunScene.add(new THREE.AmbientLight(0xffffff, 0.75));
     const dl = new THREE.DirectionalLight(0xffffff, 0.7); dl.position.set(1, 2, 1); gunScene.add(dl);
     gunCam = new THREE.PerspectiveCamera(55, 1, 0.01, 10);
     makeFx();
-    botsApi = RivalBots.create({ scene, phys, boxes, phase: () => match.phase, enemiesOf, shoot, smoked });
     resize();
+  }
+
+  // 맵을 (다시) 불러옴: 이전 맵을 지우고 새로 만든 뒤, 봇 길찾기 격자도 그 맵에 맞게 새로 만듦
+  let mapGroup = null, curMap = null;
+  function loadMap(id) {
+    if (!RivalMap.has(id)) id = 'warehouse';
+    if (curMap === id && mapGroup) return;
+    if (botsApi) botsApi.clear();
+    clearThrown(); clearRange();
+    if (mapGroup) { scene.remove(mapGroup); mapGroup.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); }
+    boxes.length = 0; // phys가 같은 배열을 계속 쓰므로 비우고 다시 채움
+    mapGroup = new THREE.Group(); scene.add(mapGroup);
+    world = RivalMap.build(mapGroup, { shadows: !isTouch }, id);
+    world.boxes.forEach((b) => boxes.push(b));
+    scene.background = new THREE.Color(world.sky || 0x9db7d4);
+    scene.fog = new THREE.Fog(world.sky || 0x9db7d4, 45, 130);
+    if (!phys) phys = Phys.create(boxes);
+    botsApi = RivalBots.create({ scene, phys, boxes, phase: () => match.phase, enemiesOf, shoot, smoked });
+    curMap = id;
   }
 
   // 모바일 브라우저는 주소창 때문에 CSS의 100vh가 실제 보이는 높이보다 커서 화면이 잘림.
@@ -286,7 +306,7 @@
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
       if (e === shooter || !e.alive || e.team === shooter.team) continue;
-      const feet = e.y - EYE;
+      const feet = e.y - (e.eye || EYE);
       const th = Phys.raySphere(ox, oy, oz, dx, dy, dz, e.x, e.y - 0.1, e.z, 0.24); // 머리
       const tb = Phys.rayAABB(ox, oy, oz, dx, dy, dz, e.x - 0.32, e.x + 0.32, feet, e.y - 0.25, e.z - 0.32, e.z + 0.32); // 몸통
       let t = -1, h = false;
@@ -321,7 +341,7 @@
       const px = ox + d[0] * r.t, py = oy + d[1] * r.t, pz = oz + d[2] * r.t;
       if (r.e) {
         let dmg = w.dmg * W.falloff(w, r.t);
-        if (r.head) dmg *= w.head; else if (py < r.e.y - EYE + 0.7) dmg *= 0.85; // 다리는 약간 약함
+        if (r.head) dmg *= w.head; else if (py < r.e.y - (r.e.eye || EYE) + 0.7) dmg *= 0.85; // 다리는 약간 약함
         if (shooter.isBot && shooter.diff) dmg *= shooter.diff.dmg; // 낮은 난이도 봇은 데미지가 약함
         spark(px, py, pz, 0xff3030); anyHit = true;
         damage(r.e, dmg, r.head, shooter, w);
@@ -345,7 +365,7 @@
     t.alive = false; t.deaths++;
     if (a !== t) a.kills++; // 수류탄 자폭은 킬로 세지 않음
     if (a === P && a !== t) { match.kills++; rangeStats.kills++; Sfx.kill(); }
-    if (t === P) { match.deaths++; inp.adsToggle = false; $('btn-ads').classList.remove('on'); P.flashT = 0; }
+    if (t === P) { match.deaths++; inp.adsToggle = false; inp.crouch = false; $('btn-ads').classList.remove('on'); $('btn-crouch').classList.remove('on'); P.flashT = 0; }
     feed(a === t ? t.name + '  [' + w.name + ' 자폭]' : a.name + '  [' + w.name + (head ? ' · 헤드샷' : '') + ']  ' + t.name, a === P || t === P);
     checkRoundEnd();
   }
@@ -411,7 +431,7 @@
     $('result').classList.add('hidden'); sbOpen = false;
     $('feed').innerHTML = '';
     setBanner('');
-    showOverlay('준비 완료', (match.teamSize + ' vs ' + match.teamSize + ' · ' + botsApi.DIFFS[match.diff].name + ' · ' + WIN_ROUNDS + '선승'), '시작');
+    showOverlay('준비 완료', (world.name + ' · ' + match.teamSize + ' vs ' + match.teamSize + ' · ' + botsApi.DIFFS[match.diff].name + ' · ' + WIN_ROUNDS + '선승'), '시작');
   }
 
 
@@ -442,7 +462,8 @@
     botsApi.clear(); clearThrown(); clearRange(); resetRangeStats();
     setupGuns();
     spawnPoint = { x: 12, z: 18.5, yaw: 0 };
-    Object.assign(P, { x: 12, y: EYE, z: 18.5, vy: 0, onGround: true, yaw: 0, pitch: 0, hp: 100, alive: true, firedT: 0, flashT: 0 });
+    inp.crouch = false; $('btn-crouch').classList.remove('on');
+    Object.assign(P, { x: 12, y: EYE, eye: EYE, z: 18.5, vy: 0, onGround: true, yaw: 0, pitch: 0, hp: 100, alive: true, firedT: 0, flashT: 0 });
     deadCamY = EYE; recoilAcc = 0; rangeT = 1.5; rangeUtilT = 2;
     const dummy = (x, z, track) => botsApi.spawn({ team: 'B', name: '과녁', diff: 'easy', x, z, yaw: Math.PI, primary: 'ar', dummy: true, track });
     [[8.5, '10m'], [-1.5, '20m'], [-11.5, '30m'], [-21.5, '40m']].forEach(([z, label]) => { // 고정 과녁 + 거리 표지
@@ -460,7 +481,7 @@
     if (match.mode !== 'range' || match.phase !== 'live') return;
     if (!P.alive) {
       rangeT -= dt;
-      if (rangeT <= 0) { P.alive = true; P.hp = 100; Object.assign(P, { x: spawnPoint.x, z: spawnPoint.z, y: EYE, vy: 0, flashT: 0 }); deadCamY = EYE; setBanner(''); rangeT = 1.5; }
+      if (rangeT <= 0) { P.alive = true; P.hp = 100; Object.assign(P, { x: spawnPoint.x, z: spawnPoint.z, y: EYE, eye: EYE, vy: 0, flashT: 0 }); deadCamY = EYE; setBanner(''); rangeT = 1.5; }
     }
     const u = guns[3];
     if (u && u.ammo <= 0 && nades.length === 0) { rangeUtilT -= dt; if (rangeUtilT <= 0) { u.ammo = 1; rangeUtilT = 2; } } else rangeUtilT = 2;
@@ -488,7 +509,8 @@
     const sA = shuffle(world.spawns.A.slice()), sB = shuffle(world.spawns.B.slice());
     const n = match.teamSize, names = shuffle(botsApi.NAMES.slice());
     spawnPoint = sA[0];
-    Object.assign(P, { x: spawnPoint.x, y: EYE, z: spawnPoint.z, vy: 0, onGround: true, yaw: spawnPoint.yaw, pitch: 0, hp: 100, alive: true, firedT: 0 });
+    inp.crouch = false; $('btn-crouch').classList.remove('on');
+    Object.assign(P, { x: spawnPoint.x, y: EYE, eye: EYE, z: spawnPoint.z, vy: 0, onGround: true, yaw: spawnPoint.yaw, pitch: 0, hp: 100, alive: true, firedT: 0 });
     deadCamY = EYE; recoilAcc = 0;
     setupGuns();
     const allyDiff = { rookie: 'easy', easy: 'normal', normal: 'hard', hard: 'hard', insane: 'insane' }[match.diff] || match.diff; // 아군은 한 단계 더 잘 싸움
@@ -629,19 +651,26 @@
     if (keys['KeyA']) fx -= 1; if (keys['KeyD']) fx += 1;
     const canMove = P.alive && (live || match.phase === 'ready');
     if (!canMove) { fx = 0; fz = 0; }
+    // 앉기: PC는 C키를 누르는 동안, 폰은 앉기 버튼(토글). 눈높이가 1.7m→1.2m로 낮아짐. 머리 위가 막혀 있으면 일어서지 못하고 계속 앉아 있음.
+    const eyeT = P.alive && (keys['KeyC'] || inp.crouch) ? 1.2 : EYE;
+    if (P.alive && P.eye !== eyeT) {
+      const stp = 4.5 * dt, ne = P.eye < eyeT ? Math.min(eyeT, P.eye + stp) : Math.max(eyeT, P.eye - stp), dEye = ne - P.eye;
+      if (dEye < 0 || !phys.hitsBox(P.x, P.y + dEye, P.z, ne)) { P.y += dEye; P.eye = ne; }
+    }
+    const crouched = P.eye < 1.5;
     const joyMag = Math.hypot(joy.x, joy.y);
-    const sprint = (keys['ShiftLeft'] || keys['ShiftRight'] || joyMag > 0.95) && !(inp.fire);
+    const sprint = (keys['ShiftLeft'] || keys['ShiftRight'] || joyMag > 0.95) && !(inp.fire) && !crouched;
     const wantAds = P.alive && live && !w.melee && !w.util && !g.reload && (inp.adsHold || inp.adsToggle);
     const len = Math.max(1, Math.hypot(fx, fz));
     fx /= len; fz /= len;
-    const speed = 5.5 * w.move * (wantAds ? 0.7 : 1) * (sprint ? 1.3 : 1);
+    const speed = 5.5 * w.move * (wantAds ? 0.7 : 1) * (sprint ? 1.3 : 1) * (crouched ? 0.55 : 1);
     const sin = Math.sin(P.yaw), cos = Math.cos(P.yaw);
     const px = P.x, pz = P.z;
     if (P.alive) {
       phys.tryMove(P, P.x + (fx * cos + fz * sin) * speed * dt, P.z);
       phys.tryMove(P, P.x, P.z + (-fx * sin + fz * cos) * speed * dt);
       phys.gravity(P, dt, !!keys['Space'] && live);
-      if (P.y < -20) Object.assign(P, { x: spawnPoint.x, z: spawnPoint.z, y: EYE, vy: 0 });
+      if (P.y < -20) Object.assign(P, { x: spawnPoint.x, z: spawnPoint.z, y: EYE, eye: EYE, vy: 0 });
     }
     const moving = Math.hypot(P.x - px, P.z - pz) / Math.max(dt, 1e-4) > 1;
 
@@ -670,6 +699,7 @@
         let sp = lerp(w.spread[0], w.spread[1], adsT);
         sp *= moving ? lerp(1.6, 1.25, adsT) : 1;
         if (!P.onGround) sp *= 2.2;
+        if (crouched) sp *= 0.75; // 앉으면 더 정확
         shoot(P, P.x, P.y, P.z, d[0], d[1], d[2], w, sp);
         const rk = w.recoil * (1 - 0.4 * adsT) * DEG;
         P.pitch = clamp(P.pitch + rk, -1.5, 1.5); recoilAcc += rk;
@@ -687,7 +717,7 @@
     // 시야각 / 감도 / 조준점
     curFov = lerp(settings.fov, w.fov || settings.fov, adsT);
     if (Math.abs(camera.fov - curFov) > 0.01) { camera.fov = curFov; camera.updateProjectionMatrix(); }
-    const spreadNow = w.melee || w.util ? 1 : lerp(w.spread[0], w.spread[1], adsT) * (moving ? 1.4 : 1) * (P.onGround ? 1 : 2);
+    const spreadNow = w.melee || w.util ? 1 : lerp(w.spread[0], w.spread[1], adsT) * (moving ? 1.4 : 1) * (P.onGround ? 1 : 2) * (crouched ? 0.75 : 1);
     const gapTarget = 4 + Math.tan(spreadNow * DEG) / Math.tan(curFov * 0.5 * DEG) * (window.innerHeight / 2);
     xhGap += (Math.min(gapTarget, 90) - xhGap) * Math.min(1, dt * 15);
     $('xh').style.setProperty('--gap', xhGap.toFixed(1) + 'px');
@@ -961,6 +991,7 @@
   function enterGame(mode) {
     show('game');
     if (!started) { started = true; initGL(); }
+    loadMap(mode === 'range' ? 'warehouse' : settings.map); // 사격장은 항상 창고 맵(과녁 차선이 정해져 있음)
     Sfx.init();
     $('touch-ui').classList.toggle('hidden', !isTouch);
     camera.fov = settings.fov; camera.updateProjectionMatrix();
@@ -1121,6 +1152,7 @@
     });
     hold($('btn-jump'), () => { keys['Space'] = true; }, () => { keys['Space'] = false; });
     $('btn-ads').addEventListener('touchstart', (e) => { e.preventDefault(); inp.adsToggle = !inp.adsToggle; $('btn-ads').classList.toggle('on', inp.adsToggle); }, { passive: false });
+    $('btn-crouch').addEventListener('touchstart', (e) => { e.preventDefault(); inp.crouch = !inp.crouch; $('btn-crouch').classList.toggle('on', inp.crouch); }, { passive: false });
     $('btn-reload').addEventListener('touchstart', (e) => { e.preventDefault(); doReload(); }, { passive: false });
     $('hud-top').addEventListener('touchstart', (e) => { e.preventDefault(); sbOpen = !sbOpen; sbT = 0; }, { passive: false });
     $('range-hud').addEventListener('touchstart', (e) => { e.preventDefault(); resetRangeStats(); }, { passive: false });
@@ -1139,7 +1171,7 @@
       P, keys, inp, boxes, match, W, joy,
       get guns() { return guns; }, get cur() { return cur; }, get bots() { return botsApi.bots; },
       all, switchTo, doReload, startRound, castRay, get nav() { return botsApi.nav; },
-      get ads() { return adsT; }, settings, mem: () => ({ children: scene.children.length, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, nades: nades.length, smokes: smokes.length, blasts: blasts.length }), step: (n, dt) => { for (let i = 0; i < n; i++) update(dt); }, rangeStats, startRangeSession, resetRangeStats, nades, smokes, blasts, smoked, get sbOpen() { return sbOpen; },
+      get ads() { return adsT; }, settings, get world() { return world; }, loadMap, get curMap() { return curMap; }, mem: () => ({ children: scene.children.length, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, nades: nades.length, smokes: smokes.length, blasts: blasts.length }), step: (n, dt) => { for (let i = 0; i < n; i++) update(dt); }, rangeStats, startRangeSession, resetRangeStats, nades, smokes, blasts, smoked, get sbOpen() { return sbOpen; },
     };
   }
 

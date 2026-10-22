@@ -34,6 +34,7 @@
             <option value="3">3 vs 3</option>
             <option value="4">4 vs 4</option>
           </select></div>
+        <div class="row"><label for="set-map">맵</label><select id="set-map"></select></div>
         <div class="row"><label for="set-diff">AI 난이도</label>
           <select id="set-diff">
             <option value="rookie">입문 (아주 쉬움)</option>
@@ -117,6 +118,7 @@
       <button id="btn-ads" class="tbtn ads">조준</button>
       <button id="btn-reload" class="tbtn rel">장전</button>
       <button id="btn-jump" class="tbtn jump">점프</button>
+      <button id="btn-crouch" class="tbtn crouch">앉기</button>
       <div id="touch-slots"></div>
       <button id="btn-exit" class="tbtn small">나가기</button>
       <button id="btn-arm" class="tbtn small arm hidden">무기</button>
@@ -128,6 +130,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="maps.js"></script>
+  <script src="map-village.js"></script>
   <script src="weapons.js"></script>
   <script src="models.js"></script>
   <script src="physics.js"></script>

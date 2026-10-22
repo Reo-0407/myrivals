@@ -2,7 +2,7 @@
 // 좌표 규칙: x = 좌우, y = 높이, z = 앞뒤. 남쪽(z+)이 A팀 스폰, 북쪽(z-)이 B팀 스폰.
 // 맵은 전부 "상자(박스)" 조합이라 충돌 계산이 단순하고 폰에서도 가볍게 돌아감.
 (function () {
-  const TILE = { crate: 1.2, metal: 2.4, hazard: 1.2, brick: 2.5, concrete: 2.5, floor: 4, plain: 4 };
+  const TILE = { crate: 1.2, metal: 2.4, hazard: 1.2, brick: 2.5, concrete: 2.5, floor: 4, plain: 4, sand: 4, adobe: 2.5 };
   const texCache = {}, matCache = {};
 
   function rnd(seed) { let s = seed; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
@@ -52,6 +52,20 @@
       for (let i = -2; i < 6; i++) { g.beginPath(); g.moveTo(i * S / 4, 0); g.lineTo(i * S / 4 + S / 8, 0); g.lineTo(i * S / 4 + S / 8 + S / 2, S); g.lineTo(i * S / 4 + S / 2, S); g.fill(); }
     },
     plain(g, S) { g.fillStyle = '#ffffff'; g.fillRect(0, 0, S, S); },
+    sand(g, S) { // 모래 바닥
+      g.fillStyle = '#d9c496'; g.fillRect(0, 0, S, S);
+      const r = rnd(21);
+      for (let i = 0; i < 1100; i++) { g.fillStyle = r() < 0.5 ? 'rgba(120,85,40,' + r() * 0.12 + ')' : 'rgba(255,245,210,' + r() * 0.18 + ')'; g.fillRect(r() * S, r() * S, 2 + r() * 3, 2 + r() * 2); }
+      g.strokeStyle = 'rgba(150,110,60,.12)'; g.lineWidth = 2;
+      for (let k = 0; k < 5; k++) { g.beginPath(); g.moveTo(0, r() * S); g.bezierCurveTo(S * .3, r() * S, S * .6, r() * S, S, r() * S); g.stroke(); }
+    },
+    adobe(g, S) { // 흙벽돌 벽
+      g.fillStyle = '#e3cba2'; g.fillRect(0, 0, S, S);
+      const r = rnd(5);
+      for (let i = 0; i < 700; i++) { g.fillStyle = 'rgba(110,70,30,' + r() * 0.1 + ')'; g.fillRect(r() * S, r() * S, 3, 3); }
+      g.strokeStyle = 'rgba(120,80,40,.2)'; g.lineWidth = 3;
+      for (let y = 0; y < S; y += S / 4) { g.beginPath(); g.moveTo(0, y); g.lineTo(S, y + (r() - 0.5) * 6); g.stroke(); }
+    },
   };
 
   function tex(kind) {
@@ -86,7 +100,8 @@
     uv.needsUpdate = true;
   }
 
-  function build(scene, opts) {
+  // 맵을 만들 때 쓰는 공용 도구 모음(박스, 장식, 계단, 드럼통 ...). 맵마다 이걸 받아서 씀.
+  function makeCtx(scene, opts) {
     opts = opts || {};
     const boxes = [];
     const W = 0xffffff;
@@ -124,6 +139,12 @@
       boxes.push({ minX: x - 0.42, maxX: x + 0.42, minY: 0, maxY: 1.1, minZ: z - 0.42, maxZ: z + 0.42 });
     }
     const mirrorZ = (fn) => { fn(1); fn(-1); }; // 남북 대칭으로 같은 구조물을 한 쌍 만듦(공평한 맵)
+    return { scene, opts, boxes, W, box, deco, stairsZ, stairsX, barrel, mirrorZ };
+  }
+
+  const maps = {};
+  maps.warehouse = { name: '창고 단지', build(c) {
+    const { scene, opts, boxes, W, box, deco, stairsZ, stairsX, barrel, mirrorZ } = c;
 
     // ---------------- 조명 ----------------
     scene.add(new THREE.HemisphereLight(0xdfe9ff, 0x586070, 0.95));
@@ -268,8 +289,11 @@
       spawns.A.push({ x: i * 3, z: 27, yaw: 0 });
       spawns.B.push({ x: i * 3, z: -27, yaw: Math.PI });
     }
-    return { boxes, spawns, name: '창고 단지' };
-  }
+    return { boxes, spawns, name: '창고 단지', sky: 0x9db7d4 };
+  } };
 
-  window.RivalMap = { build };
+  // 새 맵 등록: RivalMap.register('아이디', { name, build(ctx) → { boxes, spawns, name, sky } })
+  function register(id, def) { maps[id] = def; }
+  function build(scene, opts, id) { return (maps[id] || maps.warehouse).build(makeCtx(scene, opts)); }
+  window.RivalMap = { build, register, has: (id) => !!maps[id], list: () => Object.keys(maps).map((k) => ({ id: k, name: maps[k].name })), tex: { mat, scaleUV } };
 })();
