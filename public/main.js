@@ -911,7 +911,9 @@
   // =====================================================================
   // 메인 루프
   // =====================================================================
-  const running = () => !!document.pointerLockElement || mobilePlaying;
+  // 폰을 세로로 들면("가로로 돌려주세요" 안내가 뜰 때) 게임을 멈춤 — 안 멈추면 그 사이에 봇에게 맞음
+  const portrait = () => isTouch && window.innerHeight > window.innerWidth;
+  const running = () => (!!document.pointerLockElement || mobilePlaying) && !portrait();
 
   function update(dt) {
     now += dt;
@@ -971,7 +973,7 @@
   function resume() {
     Sfx.init();
     if (match.phase === 'ready') { if (match.mode === 'range') startRangeSession(); else startRound(); }
-    if (!isTouch) { $('c').requestPointerLock(); return; }
+    if (!isTouch) { try { const pr = $('c').requestPointerLock(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {} return; } // 잠금 요청이 취소돼도 에러 없이 넘어감
     mobilePlaying = true; hideOverlay();
     try { // 전체화면 + 가로 고정 시도 (아이폰 사파리는 막혀 있어서 실패해도 괜찮음)
       const el = document.documentElement, req = el.requestFullscreen || el.webkitRequestFullscreen;
@@ -1126,13 +1128,18 @@
     $('btn-exit').addEventListener('touchstart', (e) => { e.preventDefault(); if (confirm('매치를 나갈까요? (기록은 저장되지 않아요)')) leaveGame(); }, { passive: false });
   })();
 
+  // 다른 창/탭으로 갔다 오면 키보드/버튼이 눌린 채로 남을 수 있어서 전부 해제
+  const releaseInputs = () => { Object.keys(keys).forEach((k) => { keys[k] = false; }); inp.fire = false; inp.adsHold = false; joy.x = joy.y = 0; sbOpen = false; };
+  window.addEventListener('blur', releaseInputs);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) releaseInputs(); });
+
   // 주소 끝에 ?debug 를 붙였을 때만 테스트용으로 내부 상태를 노출
   if (DEBUG) {
     window.__rival = {
       P, keys, inp, boxes, match, W, joy,
       get guns() { return guns; }, get cur() { return cur; }, get bots() { return botsApi.bots; },
       all, switchTo, doReload, startRound, castRay, get nav() { return botsApi.nav; },
-      get ads() { return adsT; }, settings, step: (n, dt) => { for (let i = 0; i < n; i++) update(dt); }, rangeStats, startRangeSession, resetRangeStats, nades, smokes, blasts, smoked, get sbOpen() { return sbOpen; },
+      get ads() { return adsT; }, settings, mem: () => ({ children: scene.children.length, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, nades: nades.length, smokes: smokes.length, blasts: blasts.length }), step: (n, dt) => { for (let i = 0; i < n; i++) update(dt); }, rangeStats, startRangeSession, resetRangeStats, nades, smokes, blasts, smoked, get sbOpen() { return sbOpen; },
     };
   }
 
@@ -1140,7 +1147,11 @@
   initSettingsUI();
   if (myNick) {
     // 저장된 닉네임을 서버에 다시 등록(서버가 재시작돼 기록이 날아갔어도 복구)
-    api('/join', { id: myId, nick: myNick }).then((r) => { myStats = r.stats; enterLobby(); }).catch(() => { show('screen-nick'); });
+    api('/join', { id: myId, nick: myNick }).then((r) => { myStats = r.stats; enterLobby(); }).catch((e) => {
+      // 서버가 재시작돼서 다른 사람이 같은 닉네임을 먼저 쓴 경우 등
+      show('screen-nick'); $('nick-input').value = myNick;
+      $('nick-err').textContent = /이미/.test(e.message) ? '"' + myNick + '" 닉네임을 다른 사람이 쓰고 있어요. 다른 닉네임을 정해 주세요.' : '서버에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요. (' + e.message + ')';
+    });
   } else {
     show('screen-nick');
   }

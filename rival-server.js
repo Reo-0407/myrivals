@@ -16,17 +16,30 @@ try {
 }
 
 let saveTimer = null;
+function saveNow() {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(DATA_FILE, JSON.stringify(players));
+  } catch (e) {
+    console.error('RIVAL 저장 실패:', e.message);
+  }
+}
 function save() {
   if (saveTimer) return;
-  saveTimer = setTimeout(() => {
-    saveTimer = null;
-    try {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-      fs.writeFileSync(DATA_FILE, JSON.stringify(players));
-    } catch (e) {
-      console.error('RIVAL 저장 실패:', e.message);
-    }
-  }, 2000);
+  saveTimer = setTimeout(() => { saveTimer = null; saveNow(); }, 2000);
+}
+// 재배포/종료 신호를 받으면 기다리지 않고 바로 저장 (최근 몇 초 기록이 사라지는 것 방지)
+['SIGTERM', 'SIGINT'].forEach((sig) => process.on(sig, () => { if (saveTimer) clearTimeout(saveTimer); saveNow(); process.exit(0); }));
+
+// 기록이 하나도 없는 오래된 계정부터 지워서 플레이어 수가 무한히 늘지 않게 함
+const MAX_PLAYERS = 5000;
+function prune() {
+  const ids = Object.keys(players);
+  if (ids.length <= MAX_PLAYERS) return;
+  ids.filter((id) => !(players[id].wins + players[id].losses + players[id].kills))
+    .sort((a, b) => (players[a].updatedAt || 0) - (players[b].updatedAt || 0))
+    .slice(0, ids.length - MAX_PLAYERS)
+    .forEach((id) => { delete players[id]; });
 }
 
 function cleanNick(raw) {
@@ -54,6 +67,7 @@ router.post('/join', (req, res) => {
   p.nick = nick;
   p.updatedAt = Date.now();
   players[id] = p;
+  prune();
   save();
   res.json({ ok: true, nick, stats: p });
 });
