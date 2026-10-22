@@ -43,6 +43,7 @@
             <option value="hard">어려움</option>
             <option value="insane">지옥</option>
           </select></div>
+        <p id="ai-mem" class="hint"></p>
         <button id="play-btn" class="btn">매치 시작</button>
         <button id="range-btn" class="btn ghost">🎯 사격장 (연습)</button>
         <button id="shop-btn" class="btn ghost">🛒 상점 <b id="coin-badge"></b></button>
@@ -56,6 +57,7 @@
           <div class="row"><label for="set-sens">감도 <b id="v-sens"></b></label><input id="set-sens" type="range" min="0.3" max="3" step="0.1"></div>
           <div class="row"><label for="set-fov">시야각 <b id="v-fov"></b></label><input id="set-fov" type="range" min="60" max="100" step="1"></div>
           <div class="row"><label for="set-assist">에임 보조 (적 쪽으로 살짝 끌어줌)</label><select id="set-assist"><option value="0">끄기</option><option value="1">약</option><option value="2">강</option></select></div>
+          <div class="row"><label for="set-mem">AI가 기억한 내 습관</label><button id="set-mem" class="btn ghost" type="button">기억 지우기</button></div>
           <div class="row"><label for="set-auto">자동 발사 (적에게 조준점이 닿으면 자동으로 쏨)</label><input id="set-auto" type="checkbox"></div>
         </details>
         <button id="help-btn" class="btn ghost">❓ 조작 도움말</button>

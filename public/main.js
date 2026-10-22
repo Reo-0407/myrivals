@@ -143,7 +143,13 @@
     $('set-assist').value = String(settings.assist);
     $('set-assist').onchange = (e) => { settings.assist = +e.target.value; saveSettings(); };
     $('set-mode').onchange = (e) => { settings.mode = +e.target.value; saveSettings(); };
-    $('set-diff').onchange = (e) => { settings.diff = e.target.value; saveSettings(); };
+    const showMem = () => {
+      const k = settings.diff, mem = RivalBots.memory(), cap = RivalBots.LEARN_CAP[k];
+      $('ai-mem').textContent = cap ? '🧠 이 난이도의 AI는 내 습관을 학습해요 (기억한 경기 ' + mem.matches + '판' + (mem.shotDist ? ' · 내 교전 거리 약 ' + mem.shotDist + 'm' : '') + ')' : '이 난이도의 AI는 학습하지 않아요 (보통 이상에서 학습)';
+    };
+    $('set-diff').onchange = (e) => { settings.diff = e.target.value; saveSettings(); showMem(); };
+    $('set-mem').onclick = () => { RivalBots.resetMemory(); showMem(); };
+    showMem();
     $('set-sens').oninput = (e) => { settings.sens = +e.target.value; $('v-sens').textContent = settings.sens; saveSettings(); };
     $('set-fov').oninput = (e) => { settings.fov = +e.target.value; $('v-fov').textContent = settings.fov; saveSettings(); };
     $('set-auto').onchange = (e) => { settings.auto = e.target.checked; saveSettings(); };
@@ -237,7 +243,7 @@
     scene.background = new THREE.Color(world.sky || 0x9db7d4);
     scene.fog = new THREE.Fog(world.sky || 0x9db7d4, 45, 130);
     if (!phys) phys = Phys.create(boxes);
-    botsApi = RivalBots.create({ scene, phys, boxes, phase: () => match.phase, enemiesOf, shoot, smoked });
+    botsApi = RivalBots.create({ scene, phys, boxes, phase: () => match.phase, enemiesOf, shoot, smoked, mapId: () => id });
     curMap = id;
   }
 
@@ -346,7 +352,7 @@
     Sfx.shot(w.sfx, isMe ? 1 : Math.max(0, 1 - dP / 60) * 0.7);
     const mz = muzzlePos(shooter, dx, dy, dz);
     const n = w.pellets || 1;
-    let anyHit = false;
+    let anyHit = false, hitMe = false;
     for (let i = 0; i < n; i++) {
       const d = spreadDir(dx, dy, dz, spread);
       const r = castRay(shooter, ox, oy, oz, d[0], d[1], d[2], 300);
@@ -355,18 +361,21 @@
         let dmg = w.dmg * W.falloff(w, r.t);
         if (r.head) dmg *= w.head; else if (py < r.e.y - (r.e.eye || EYE) + 0.7) dmg *= 0.85; // 다리는 약간 약함
         if (shooter.isBot && shooter.diff) dmg *= shooter.diff.dmg; // 낮은 난이도 봇은 데미지가 약함
-        spark(px, py, pz, 0xff3030); anyHit = true;
+        spark(px, py, pz, 0xff3030); anyHit = true; if (r.e === P) hitMe = true;
+        if (isMe && r.e.isBot && !r.e.dummy && match.mode === 'match') botsApi.observeShot(r.t);
         damage(r.e, dmg, r.head, shooter, w);
       } else if (r.wall) spark(px, py, pz, 0xffc060);
       tracer(mz[0], mz[1], mz[2], px, py, pz);
     }
     if (isMe) { rangeStats.shots++; if (anyHit) rangeStats.hits++; }
+    else if (shooter.isBot && shooter.team === 'B') { botStats.shots++; if (hitMe) botStats.hitsOnMe++; }
   }
 
   function damage(t, amount, head, attacker, w) {
     if (!t.alive || match.phase !== 'live') return;
     amount = Math.max(1, Math.round(amount));
     t.hp = Math.max(0, t.hp - amount);
+    if (t.isBot) { t.flinchT = 0.5; if (attacker && attacker !== t) t.hurtFrom = attacker; } // 맞으면 움찔하고 쏜 쪽을 확인
     if (t === P && attacker && attacker !== P) showHitDir(attacker);
     if (t === P) { dmgT = Math.min(0.8, dmgT + 0.4); if (now - lastHurt > 0.12) { lastHurt = now; Sfx.hurt(); } } else t.flash = 0.12;
     if (attacker === P && t !== P) { hitmark(head); Sfx.hit(head); if (head) rangeStats.heads++; rangeStats.last = amount + (head ? ' (헤드샷)' : ''); }
@@ -444,6 +453,7 @@
     $('feed').innerHTML = '';
     setBanner('');
     applyCrosshair();
+    botsApi.beginMatch();
     showOverlay('준비 완료', (world.name + ' · ' + match.teamSize + ' vs ' + match.teamSize + ' · ' + botsApi.DIFFS[match.diff].name + ' · ' + WIN_ROUNDS + '선승'), '시작');
   }
 
@@ -452,6 +462,7 @@
   // 사격장 (연습 모드): 고정/움직이는 과녁, 거리 표시, 명중률 통계, 무기 자유 교체
   // =====================================================================
   const rangeStats = { shots: 0, hits: 0, heads: 0, kills: 0, last: '-' };
+  const botStats = { shots: 0, hitsOnMe: 0, nearMiss: 0 }; // 봇이 나를 향해 쏜 횟수 / 맞힌 횟수 / 아슬아슬하게 빗나간 횟수(튜닝용)
   const rangeLabels = [];
   let rangeT = 1.5, rangeUtilT = 2;
 
@@ -549,8 +560,10 @@
     match.phase = 'between'; match.phaseT = BETWEEN;
     if (winner) match.score[winner]++;
     const mine = winner === 'A';
+    botsApi.roundEnd(winner ? mine : null);
+    const li = match.diff && botsApi.learnInfo(match.diff);
     if (winner) (mine ? Sfx.win : Sfx.lose)();
-    setBanner((winner ? (mine ? '🏆 라운드 승리!' : '라운드 패배') : '무승부') + '<small>' + why + ' · ' + match.score.A + ' : ' + match.score.B + '</small>', BETWEEN);
+    setBanner((winner ? (mine ? '🏆 라운드 승리!' : '라운드 패배') : '무승부') + '<small>' + why + ' · ' + match.score.A + ' : ' + match.score.B + (li && li.cap ? ' · 🧠 AI 학습 ' + Math.round(li.L * 100) + '%' : '') + '</small>', BETWEEN);
     inp.fire = false;
   }
 
@@ -575,6 +588,7 @@
   async function finishMatch() {
     match.phase = 'over';
     const won = match.score.A > match.score.B;
+    botsApi.endMatch(won, match.diff);
     setBanner('');
     if (document.pointerLockElement) document.exitPointerLock();
     $('res-title').textContent = won ? '🏆 승리!' : '패배';
@@ -968,6 +982,7 @@
     updateMatch(dt);
     updatePlayer(dt);
     updateRange(dt);
+    if (match.mode === 'match' && match.phase === 'live') botsApi.observePlayer(dt, P);
     botsApi.update(dt, now, match.phase === 'live');
     updateThrown(dt);
     updateFx(dt);
@@ -1212,7 +1227,7 @@
       P, keys, inp, boxes, match, W, joy,
       get guns() { return guns; }, get cur() { return cur; }, get bots() { return botsApi.bots; },
       all, switchTo, doReload, startRound, castRay, get nav() { return botsApi.nav; },
-      get ads() { return adsT; }, get vm() { return vm; }, shop: RivalShop, get spec() { return specTarget; }, settings, get world() { return world; }, loadMap, get curMap() { return curMap; }, mem: () => ({ children: scene.children.length, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, nades: nades.length, smokes: smokes.length, blasts: blasts.length }), step: (n, dt) => { for (let i = 0; i < n; i++) update(dt); }, rangeStats, startRangeSession, resetRangeStats, nades, smokes, blasts, smoked, get sbOpen() { return sbOpen; },
+      get ads() { return adsT; }, botStats, get vm() { return vm; }, shop: RivalShop, get spec() { return specTarget; }, settings, get world() { return world; }, loadMap, get curMap() { return curMap; }, mem: () => ({ children: scene.children.length, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, nades: nades.length, smokes: smokes.length, blasts: blasts.length }), step: (n, dt) => { for (let i = 0; i < n; i++) update(dt); }, rangeStats, startRangeSession, resetRangeStats, nades, smokes, blasts, smoked, get sbOpen() { return sbOpen; },
     };
   }
 

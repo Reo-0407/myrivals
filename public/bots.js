@@ -1,5 +1,8 @@
-// RIVAL 봇 AI: 길찾기(A*) + 시야 판정 + 교전(조준/좌우 이동/재장전)
-// 상태: 적을 보면 "교전", 못 보면 마지막으로 본 곳이나 적이 있을 법한 곳으로 "이동(수색)".
+// MyRivals 봇 AI v2
+//  - 길찾기(A*) + 시야 판정 + 교전(조준/좌우 이동/재장전)
+//  - 동선 다양화: 봇마다 역할(돌격/우회/매복/순찰), 팀 레인, 길마다 다른 비용(소음+지나간 길 기피)
+//  - 학습: 보통 이상 난이도는 플레이어가 자주 있는 곳/싸우는 거리를 기억해서 점점 잘 싸움 (localStorage `rival_profile`)
+//  - 빗나감: 조준 흔들림, 처음 몇 발 일부러 빗나가는 "미스 버스트", 맞았을 때 움찔, 연사 반동
 (function () {
   const W = window.RivalWeapons;
 
@@ -7,23 +10,80 @@
   //   react 적을 처음 본 뒤 쏘기까지 걸리는 시간(초)   aim 기본 조준 오차(도)   moveAim 적(나)이 움직일 때 추가되는 오차(도 per m/s)
   //   head 머리를 노릴 확률   turn 조준 회전 속도(rad/s)   strafe 좌우 이동 정도   dmg 봇 데미지 배율
   //   fov 시야 반각(라디안)   hear 총소리를 알아채는 거리(m)   burstOn/Off 연사 시간/쉬는 시간 범위(초)   pool 들고 나오는 주무기 후보
+  //   wob 조준 흔들림(도)   pMiss 한 번 쏠 때마다 일부러 빗나가는 연사가 될 확률   miss 빗나갈 때 어긋나는 각도 범위(도)   rec 연사 반동 배율
   const ALL = ['ar', 'ar', 'burst', 'smg', 'smg', 'shotgun', 'sniper', 'lmg'];
   const DIFFS = {
-    rookie: { name: '입문',   react: 1.5,  aim: 4.5, moveAim: 1.0,  head: 0.0,  turn: 1.8,  strafe: 0.15, dmg: 0.5,  fov: 0.95, hear: 12, burstOn: [0.25, 0.5], burstOff: [0.9, 1.7],  pool: ['ar', 'smg'] },
-    easy:   { name: '쉬움',   react: 1.0,  aim: 3.6, moveAim: 0.7,  head: 0.02, turn: 2.4,  strafe: 0.35, dmg: 0.65, fov: 1.0,  hear: 18, burstOn: [0.3, 0.7],  burstOff: [0.6, 1.3],  pool: ['ar', 'smg', 'burst'] },
-    normal: { name: '보통',   react: 0.7,  aim: 3.0, moveAim: 0.55, head: 0.07, turn: 4.2,  strafe: 0.7,  dmg: 0.7,  fov: 1.1,  hear: 26, burstOn: [0.5, 1.0],  burstOff: [0.5, 1.1], pool: ['ar', 'smg', 'burst', 'shotgun'] },
-    hard:   { name: '어려움', react: 0.35, aim: 1.4, moveAim: 0.25, head: 0.18, turn: 7.0,  strafe: 1.0,  dmg: 1.0,  fov: 1.15, hear: 32, burstOn: [0.8, 1.6],  burstOff: [0.2, 0.6],  pool: ALL },
-    insane: { name: '지옥',   react: 0.16, aim: 0.5, moveAim: 0.1,  head: 0.4,  turn: 14.0, strafe: 1.25, dmg: 1.1,  fov: 1.15, hear: 40, burstOn: [1.2, 2.4],  burstOff: [0.1, 0.3],  pool: ALL },
+    rookie: { name: '입문',   react: 1.5,  aim: 4.5, moveAim: 1.0,  head: 0.0,  turn: 1.8,  strafe: 0.15, dmg: 0.5,  fov: 0.95, hear: 12, burstOn: [0.25, 0.5], burstOff: [0.9, 1.7], pool: ['ar', 'smg'],                    wob: 2.2,  pMiss: 0.6,  miss: [4, 9],     rec: 1.0 },
+    easy:   { name: '쉬움',   react: 1.0,  aim: 3.6, moveAim: 0.7,  head: 0.02, turn: 2.4,  strafe: 0.35, dmg: 0.65, fov: 1.0,  hear: 18, burstOn: [0.3, 0.7],  burstOff: [0.6, 1.3], pool: ['ar', 'smg', 'burst'],           wob: 1.8,  pMiss: 0.5,  miss: [3.5, 8],   rec: 0.9 },
+    normal: { name: '보통',   react: 0.7,  aim: 3.0, moveAim: 0.55, head: 0.07, turn: 4.2,  strafe: 0.7,  dmg: 0.7,  fov: 1.1,  hear: 26, burstOn: [0.5, 1.0],  burstOff: [0.5, 1.1], pool: ['ar', 'smg', 'burst', 'shotgun'], wob: 1.3,  pMiss: 0.38, miss: [3, 7],     rec: 0.75 },
+    hard:   { name: '어려움', react: 0.35, aim: 1.4, moveAim: 0.25, head: 0.18, turn: 7.0,  strafe: 1.0,  dmg: 1.0,  fov: 1.15, hear: 32, burstOn: [0.8, 1.6],  burstOff: [0.2, 0.6], pool: ALL,                             wob: 0.8,  pMiss: 0.26, miss: [2.5, 6],   rec: 0.55 },
+    insane: { name: '지옥',   react: 0.16, aim: 0.4, moveAim: 0.1,  head: 0.4,  turn: 14.0, strafe: 1.25, dmg: 1.1,  fov: 1.15, hear: 40, burstOn: [1.2, 2.4],  burstOff: [0.1, 0.3], pool: ALL,                             wob: 0.35, pMiss: 0.1, miss: [2, 4.5],   rec: 0.35 },
   };
+  Object.keys(DIFFS).forEach((k) => { DIFFS[k].key = k; });
   const NAMES = ['Viper', 'Ghost', 'Nova', 'Blaze', 'Echo', 'Rogue', 'Hawk', 'Frost', 'Zed', 'Pixel', 'Kuma', 'Rex', 'Luna', 'Orca', 'Jinx', 'Volt'];
   const PRIMARIES = ALL;
 
+  // 난이도별 역할 비율 (돌격 / 우회 / 매복 / 순찰)
+  const STYLE_W = {
+    rookie: { rush: 0.4, flank: 0.1, hold: 0.1, roam: 0.4 },
+    easy:   { rush: 0.4, flank: 0.15, hold: 0.1, roam: 0.35 },
+    normal: { rush: 0.3, flank: 0.3, hold: 0.2, roam: 0.2 },
+    hard:   { rush: 0.2, flank: 0.3, hold: 0.35, roam: 0.15 },
+    insane: { rush: 0.2, flank: 0.3, hold: 0.35, roam: 0.15 },
+  };
+  // 학습으로 얼마나 강해질 수 있는지 (입문/쉬움은 학습 안 함)
+  const LEARN_CAP = { normal: 0.35, hard: 0.7, insane: 1 };
+
   const angDiff = (a, b) => { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const DEG = Math.PI / 180;
+  function hash(i, s) { let h = (Math.imul(i, 374761393) + Math.imul(s, 668265263)) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
+
+  // =====================================================================
+  // 플레이어 기억 (브라우저에 저장). 어디에 자주 있는지(16x16 칸) / 어느 거리에서 싸우는지 / 몇 경기 했는지
+  // =====================================================================
+  const PKEY = 'rival_profile', GN = 16, GCELL = 4; // 격자 16x16, 한 칸 4m (맵 64m)
+  const idOk = (s) => typeof s === 'string' && /^[A-Za-z0-9_-]{1,24}$/.test(s) && s !== '__proto__' && s !== 'constructor' && s !== 'prototype';
+  function emptyProfile() { return { v: 1, matches: 0, lv: { normal: 0, hard: 0, insane: 0 }, shot: { n: 0, sum: 0 }, maps: Object.create(null) }; }
+  function sanitizeProfile(raw) {
+    const p = emptyProfile();
+    if (!raw || typeof raw !== 'object') return p;
+    const n = (v, a, b) => (typeof v === 'number' && Number.isFinite(v) ? clamp(v, a, b) : 0);
+    p.matches = Math.floor(n(raw.matches, 0, 100000));
+    if (raw.lv && typeof raw.lv === 'object') Object.keys(p.lv).forEach((k) => { p.lv[k] = n(raw.lv[k], 0, 1); });
+    if (raw.shot && typeof raw.shot === 'object') { p.shot.n = Math.floor(n(raw.shot.n, 0, 1e6)); p.shot.sum = n(raw.shot.sum, 0, 1e9); }
+    if (raw.maps && typeof raw.maps === 'object') {
+      Object.keys(raw.maps).slice(0, 20).forEach((id) => {
+        const h = raw.maps[id] && raw.maps[id].heat;
+        if (!idOk(id) || !Array.isArray(h) || h.length !== GN * GN) return;
+        p.maps[id] = { heat: h.map((v) => n(v, 0, 1)) };
+      });
+    }
+    return p;
+  }
+  function loadProfile() { try { return sanitizeProfile(JSON.parse(localStorage.getItem(PKEY) || 'null')); } catch (e) { return emptyProfile(); } }
+  let profile = loadProfile();
+  function saveProfile() { try { localStorage.setItem(PKEY, JSON.stringify(profile)); } catch (e) {} }
+
+  // 이번 경기에서 관찰한 것
+  const sess = { heat: new Float32Array(GN * GN), total: 0, mapId: 'x', shotN: 0, shotSum: 0, adapt: 0, rounds: 0 };
+  const gridIdx = (x, z) => clamp(Math.floor((z + 32) / GCELL), 0, GN - 1) * GN + clamp(Math.floor((x + 32) / GCELL), 0, GN - 1);
+
+  // 학습 수준 0~1 (경기 누적 기억 + 이번 경기에서 플레이어가 라운드를 이기는 만큼 + 난이도 상한)
+  function learnLevel(key) {
+    const cap = LEARN_CAP[key]; if (!cap) return 0;
+    return clamp((profile.lv[key] || 0) * 0.6 + sess.adapt, 0, 1) * cap;
+  }
+  const avgShotDist = () => {
+    const n = profile.shot.n + sess.shotN; if (n < 12) return 0;
+    return (profile.shot.sum + sess.shotSum) / n;
+  };
 
   function create(G) {
     const phys = G.phys;
     const bots = [];
+    const mapId = typeof G.mapId === 'function' ? G.mapId() : 'x';
 
     // ---------------- 길찾기용 격자 ----------------
     const HALF = 32, N = 64;
@@ -41,6 +101,7 @@
       }
     }
     const cellOf = (x, z) => [clamp(Math.floor(x + HALF), 0, N - 1), clamp(Math.floor(z + HALF), 0, N - 1)];
+    const cellCenter = (i) => [-HALF + (i % N) + 0.5, -HALF + ((i / N) | 0) + 0.5];
     function nearestWalkable(x, z) {
       const [cx, cz] = cellOf(x, z);
       for (let r = 0; r <= 8; r++) {
@@ -85,11 +146,18 @@
     const gScore = new Float32Array(N * N), parent = new Int32Array(N * N), closed = new Uint8Array(N * N);
     const DIRS = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.414], [1, -1, 1.414], [-1, 1, 1.414], [-1, -1, 1.414]];
 
-    function findPath(sx, sz, tx, tz) {
+    // 팀별 "지나간 길" 기록: 많이 지나간 칸은 다음 길찾기에서 비싸게 쳐서 다른 길로 돌아가게 함 (라운드가 지나면 절반씩 옅어짐)
+    const traffic = { A: new Float32Array(N * N), B: new Float32Array(N * N) };
+    const teamIntel = { A: null, B: null }; // 팀이 마지막으로 적을 본 곳 (무전)
+
+    // opt: { seed, noise, team } — 봇마다 다른 길 비용을 줘서 같은 곳에서 출발해도 다른 길을 고르게 함
+    function findPath(sx, sz, tx, tz, opt) {
       const s = nearestWalkable(sx, sz), g = nearestWalkable(tx, tz);
       if (s < 0 || g < 0) return null;
       gScore.fill(1e9); closed.fill(0); parent.fill(-1);
       const gx = g % N, gz = (g / N) | 0;
+      const seed = opt ? opt.seed | 0 : 0, noise = opt ? opt.noise || 0 : 0;
+      const tr = opt && opt.team ? traffic[opt.team] : null;
       const h = (i) => { const dx = Math.abs((i % N) - gx), dz = Math.abs(((i / N) | 0) - gz); return Math.max(dx, dz) + 0.414 * Math.min(dx, dz); };
       const open = [[h(s), s]]; // [f, 칸번호] 최소 힙
       gScore[s] = 0;
@@ -112,7 +180,10 @@
           const ni = nz * N + nx;
           if (!walk[ni] || closed[ni]) continue;
           if (dx && dz && (!walk[cz * N + nx] || !walk[nz * N + cx])) continue; // 모서리 파고들기 금지
-          const ng = gScore[cur] + cost;
+          let c = cost;
+          if (noise) c *= 1 + noise * hash(ni, seed);
+          if (tr) c *= 1 + Math.min(2.5, tr[ni] * 2.5);
+          const ng = gScore[cur] + c;
           if (ng < gScore[ni]) { gScore[ni] = ng; parent[ni] = cur; push([ng + h(ni), ni]); }
         }
       }
@@ -120,7 +191,7 @@
       const cells = [];
       for (let i = g; i !== -1; i = parent[i]) cells.push(i);
       cells.reverse();
-      const pts = [[sx, sz]].concat(cells.map((i) => [-HALF + (i % N) + 0.5, -HALF + ((i / N) | 0) + 0.5]));
+      const pts = [[sx, sz]].concat(cells.map(cellCenter));
       // 직선으로 갈 수 있는 구간은 건너뛰어 부드럽게
       const out = [];
       let i = 0;
@@ -133,22 +204,108 @@
       return out;
     }
 
+    // ---------------- 매복 자리 후보: 시야가 트이면서 근처에 엄폐물이 있는 곳 ----------------
+    const hotspots = [];
+    (function buildHotspots() {
+      const cells = [];
+      for (let i = 0; i < N * N; i++) if (walk[i]) cells.push(i);
+      if (!cells.length) return;
+      const scored = [];
+      for (let k = 0; k < 260; k++) {
+        const i = cells[Math.floor(Math.random() * cells.length)], c = cellCenter(i);
+        let clear = 0, near = 0;
+        for (let d = 0; d < 12; d++) {
+          const a = d * Math.PI / 6, dx = Math.cos(a), dz = Math.sin(a);
+          const t = phys.rayBoxes(c[0], 1.4, c[1], dx, 0, dz, 18);
+          if (t >= 17.9) clear++; else if (t < 2.2) near++;
+        }
+        if (clear < 3 || near < 2) continue;
+        scored.push({ x: c[0], z: c[1], s: clear + near * 1.5 + Math.random() * 2 });
+      }
+      scored.sort((a, b) => b.s - a.s);
+      for (const sp of scored) {
+        if (hotspots.length >= 28) break;
+        if (hotspots.every((h) => Math.hypot(h.x - sp.x, h.z - sp.z) > 6)) hotspots.push(sp);
+      }
+    })();
+
+    // ---------------- 플레이어 기억을 합친 "자주 있는 곳" 지도 ----------------
+    let heatMix = null; // 합쳐서 합이 1인 256칸. 없으면 null
+    function buildHeatMix() {
+      heatMix = null;
+      const old = profile.maps[mapId], out = new Float32Array(GN * GN);
+      let sum = 0;
+      if (old) for (let i = 0; i < out.length; i++) { out[i] += old.heat[i] * 0.5; sum += old.heat[i] * 0.5; }
+      if (sess.total > 6) for (let i = 0; i < out.length; i++) { const v = sess.heat[i] / sess.total * 0.5; out[i] += v; sum += v; }
+      if (sum < 0.2) return;
+      for (let i = 0; i < out.length; i++) out[i] /= sum;
+      heatMix = out;
+    }
+    function sampleHeat() {
+      if (!heatMix) return null;
+      let tot = 0; const wts = new Float32Array(heatMix.length);
+      for (let i = 0; i < wts.length; i++) { wts[i] = Math.pow(heatMix[i], 1.4); tot += wts[i]; }
+      if (tot <= 0) return null;
+      let r = Math.random() * tot;
+      for (let i = 0; i < wts.length; i++) {
+        r -= wts[i];
+        if (r <= 0) return { x: -32 + (i % GN) * GCELL + rnd(0, GCELL), z: -32 + Math.floor(i / GN) * GCELL + rnd(0, GCELL) };
+      }
+      return null;
+    }
+    function heatNear(x, z) {
+      if (!heatMix) return 0;
+      const gx = clamp(Math.floor((x + 32) / GCELL), 0, GN - 1), gz = clamp(Math.floor((z + 32) / GCELL), 0, GN - 1);
+      let s = 0;
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) { const ix = gx + dx, iz = gz + dz; if (ix >= 0 && iz >= 0 && ix < GN && iz < GN) s += heatMix[iz * GN + ix]; }
+      return s;
+    }
+
     // ---------------- 봇 생성/제거 ----------------
+    let laneSeq = { A: shuffle([-1, 0, 1]), B: shuffle([-1, 0, 1]) }, laneN = { A: 0, B: 0 };
+    function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+    function pickStyle(key) {
+      const w = STYLE_W[key] || STYLE_W.normal; let r = Math.random();
+      for (const k of Object.keys(w)) { r -= w[k]; if (r <= 0) return k; }
+      return 'rush';
+    }
+
+    // 학습 수준을 반영한 이번 라운드용 난이도 값 (원본 DIFFS는 건드리지 않음)
+    function effDiff(D, L) {
+      if (!L) return D;
+      const e = Object.assign({}, D);
+      e.react = D.react * (1 - 0.4 * L);
+      e.aim = D.aim * (1 - 0.35 * L);
+      e.head = Math.min(0.5, D.head + 0.1 * L);
+      e.turn = D.turn * (1 + 0.4 * L);
+      e.hear = D.hear + 8 * L;
+      e.pMiss = D.pMiss * (1 - 0.35 * L);
+      e.wob = D.wob * (1 - 0.25 * L);
+      return e;
+    }
+
     function spawn(opts) { // opts: { team, name, diff, x, z, yaw, primary }
       const D0 = DIFFS[opts.diff] || DIFFS.normal;
+      const L = !opts.dummy && opts.team === 'B' ? learnLevel(D0.key) : 0; // 학습은 적(B팀)만
       const pid = opts.primary || D0.pool[Math.floor(Math.random() * D0.pool.length)];
       const m = RivalModels.humanoid(opts.team, pid, opts.name);
       m.tag.visible = opts.team === 'A' && !opts.dummy; // 이름표는 아군만(과녁 제외)
+      const sd = Math.floor(Math.random() * 1e9);
       const b = {
         isBot: true, id: 'bot' + Math.random().toString(36).slice(2, 7), name: opts.name, team: opts.team,
         x: opts.x, z: opts.z, y: 1.7, vy: 0, onGround: true, yaw: opts.yaw, pitch: 0,
         hp: 100, alive: true, firedT: 0, kills: 0, deaths: 0,
-        diff: D0, bursting: false, burstT: 0.2, tgtPrev: null, tgtSpeed: 0, hadSight: false,
+        diff: effDiff(D0, L), L, bursting: false, burstT: 0.2, tgtPrev: null, tgtSpeed: 0, hadSight: false,
         gun: W.create(pid), pistol: W.create('pistol'),
         mesh: m, target: null, targetVisible: false, lastSeen: null, lastSeenT: -99, reactT: 0.5, aimHead: false,
-        percT: Math.random() * 0.12, strafeDir: 0, strafeT: 0, path: null, pathT: 0, huntT: 0, goal: null,
-        stuckT: 0, lastPX: opts.x, lastPZ: opts.z, stuckCheckT: 0.5, walkPhase: 0, moving: false, flash: 0, deadT: 0, blindT: 0, muzzleT: 0,
+        percT: Math.random() * 0.12, strafeDir: 0, strafeT: 0, path: null, pathT: 0, goal: null,
+        stuckT: 0, stuckN: 0, lastPX: opts.x, lastPZ: opts.z, stuckCheckT: 0.5, walkPhase: 0, moving: false, flash: 0, deadT: 0, blindT: 0, muzzleT: 0,
         dummy: !!opts.dummy, track: opts.track || null, trackT: 0, homeX: opts.x,
+        // v2: 역할/경로/흔들림/미스
+        seed: sd, style: pickStyle(D0.key), lane: opts.dummy ? 0 : laneSeq[opts.team][laneN[opts.team]++ % 3], route: [], holding: false, holdT: 0, holdDir: 0, holdSpot: null,
+        age: 0, planT: -99, pauseT: opts.dummy ? 0 : rnd(0, 0.6), nextPause: rnd(5, 11), spdK: rnd(0.92, 1.08),
+        wobA: Math.random() * 6.28, wobB: Math.random() * 6.28, wobPh: Math.random() * 20,
+        miss: null, recoil: 0, flinchT: 0, hurtFrom: null, scanPh: Math.random() * 6.28,
       };
       m.root.position.set(b.x, 0, b.z);
       m.root.rotation.y = b.yaw;
@@ -165,6 +322,9 @@
         b.mesh.tag.material.map.dispose(); b.mesh.tag.material.dispose();
       });
       bots.length = 0;
+      // 지나간 길 기록은 절반 가까이 옅게 남겨서 "지난 라운드와 다른 길"을 고르게 함
+      for (const t of ['A', 'B']) { const a = traffic[t]; for (let i = 0; i < a.length; i++) a[i] *= 0.45; teamIntel[t] = null; laneSeq[t] = shuffle([-1, 0, 1]); laneN[t] = 0; }
+      buildHeatMix();
     }
 
     // ---------------- 인지: 가장 가까운 "보이는" 적 찾기 ----------------
@@ -192,33 +352,105 @@
           b.tgtSpeed = b.tgtSpeed * 0.6 + Math.min(sp, 9) * 0.4;
         }
         b.tgtPrev = { id: best.id, x: best.x, z: best.z, t: now };
-        if (b.target !== best) { b.target = best; b.reactT = b.diff.react * (0.8 + Math.random() * 0.4); b.aimHead = Math.random() < b.diff.head; }
-        else if (!b.hadSight) b.reactT = Math.max(b.reactT, b.diff.react * 0.5); // 숨었다가 다시 나타난 적에게도 반응 시간이 필요
+        if (b.target !== best) {
+          b.target = best; b.reactT = b.diff.react * (0.8 + Math.random() * 0.4) * (b.holding ? 0.75 : 1); b.aimHead = Math.random() < b.diff.head;
+          b.miss = null; b.bursting = false; b.burstT = 0.05;
+        } else if (!b.hadSight) b.reactT = Math.max(b.reactT, b.diff.react * 0.5); // 숨었다가 다시 나타난 적에게도 반응 시간이 필요
         b.targetVisible = true; b.hadSight = true;
         b.lastSeen = { x: best.x, z: best.z };
         b.lastSeenT = now;
+        teamIntel[b.team] = { x: best.x, z: best.z, t: now };
       } else {
         b.targetVisible = false; b.hadSight = false; b.tgtSpeed = 0;
         if (b.target && now - b.lastSeenT > 3.5) b.target = null;
       }
     }
 
-    function pickGoal(b, now) {
-      if (b.lastSeen && now - b.lastSeenT < 8) { b.goal = { x: b.lastSeen.x, z: b.lastSeen.z }; return; }
-      b.lastSeen = null;
-      const enemies = G.enemiesOf(b.team).filter((e) => e.alive);
-      if (!enemies.length) { b.goal = null; return; }
-      let best = enemies[0], bd = 1e9;
-      for (const e of enemies) { const d = Math.hypot(e.x - b.x, e.z - b.z); if (d < bd) { bd = d; best = e; } }
-      b.goal = { x: best.x + (Math.random() - 0.5) * 10, z: best.z + (Math.random() - 0.5) * 10 }; // 대략적인 위치로 수색
+    // ---------------- 경로 계획: 역할에 따라 서로 다른 목적지/우회점 ----------------
+    const aliveEnemies = (b) => G.enemiesOf(b.team).filter((e) => e.alive);
+    // 적이 있을 법한 곳. 학습한 봇은 플레이어가 자주 있던 곳을 노림. 아니면 아무 적 근처(가장 가까운 적만 쫓지 않음)
+    function enemyGuess(b) {
+      if (b.L > 0.05 && Math.random() < 0.15 + 0.7 * b.L) { const h = sampleHeat(); if (h) return h; }
+      const en = aliveEnemies(b);
+      if (!en.length) return null;
+      const e = en[Math.floor(Math.random() * en.length)];
+      return { x: e.x + rnd(-8, 8), z: e.z + rnd(-8, 8) };
+    }
+    // 출발점→목표 선분 옆으로 비껴난 우회점 (레인마다 다른 쪽, 간격도 다르게)
+    function viaPoint(b, g, side) {
+      const dx = g.x - b.x, dz = g.z - b.z, d = Math.hypot(dx, dz) || 1;
+      const px = -dz / d, pz = dx / d, off = (side || 1) * rnd(7, 14), t = rnd(0.35, 0.65);
+      const v = { x: b.x + dx * t + px * off, z: b.z + dz * t + pz * off };
+      const c = nearestWalkable(v.x, v.z); if (c < 0) return null;
+      const cc = cellCenter(c); return { x: cc[0], z: cc[1] };
+    }
+    function chooseHold(b, guess) {
+      if (!hotspots.length) return null;
+      const taken = bots.filter((o) => o !== b && o.alive && o.holdSpot).map((o) => o.holdSpot);
+      let tot = 0; const wts = hotspots.map((h) => {
+        const d = Math.hypot(h.x - b.x, h.z - b.z);
+        let w = d < 6 || d > 45 ? 0.05 : 1;
+        if (taken.some((t) => Math.hypot(t.x - h.x, t.z - h.z) < 8)) w *= 0.1;
+        if (guess) { const dg = Math.hypot(h.x - guess.x, h.z - guess.z); if (dg < 10) w *= 0.3; } // 적 바로 옆은 피함
+        w *= 1 + 8 * heatNear(h.x, h.z) * b.L * 2; // 학습한 봇은 플레이어가 자주 지나는 곳이 보이는 자리를 선호
+        tot += w; return w;
+      });
+      let r = Math.random() * tot;
+      for (let i = 0; i < hotspots.length; i++) { r -= wts[i]; if (r <= 0) return hotspots[i]; }
+      return hotspots[0];
     }
 
-    function preferredDist(w) {
+    function planRoute(b, now) {
+      b.planT = now; b.route = []; b.path = null; b.pathT = 0; b.holding = false;
+      const intel = teamIntel[b.team], fresh = intel && now - intel.t < 9;
+      if (b.lastSeen && now - b.lastSeenT < 6) { // 방금 본 곳 (쫓아가기). 레인마다 살짝 다른 지점으로
+        const g = { x: b.lastSeen.x + rnd(-2.5, 2.5), z: b.lastSeen.z + rnd(-2.5, 2.5), chase: true };
+        const v = b.age > 8 && b.lane ? viaPoint(b, g, b.lane) : null;
+        if (v && Math.random() < 0.5) b.route.push(v);
+        b.route.push(g); return;
+      }
+      b.lastSeen = null;
+      let style = b.style;
+      if (style === 'hold' && b.age > 45) style = 'rush'; // 너무 오래 숨어 있으면 움직임
+      if (fresh && style !== 'hold') { // 무전으로 들은 곳으로 가되, 레인별로 다른 방향에서 접근
+        const g = { x: intel.x + rnd(-4, 4), z: intel.z + rnd(-4, 4) };
+        const v = b.lane || Math.random() < 0.5 ? viaPoint(b, g, b.lane || (Math.random() < 0.5 ? 1 : -1)) : null;
+        if (v) b.route.push(v);
+        b.route.push(g); return;
+      }
+      const guess = enemyGuess(b);
+      if (!guess) { b.route.push({ x: rnd(-20, 20), z: rnd(-20, 20) }); return; }
+      if (style === 'hold') {
+        const sp = chooseHold(b, guess);
+        if (sp) { b.holdSpot = sp; b.holdDir = Math.atan2(-(guess.x - sp.x), -(guess.z - sp.z)); b.route.push({ x: sp.x, z: sp.z, hold: true }); return; }
+        style = 'rush';
+      }
+      if (style === 'flank') {
+        const v = viaPoint(b, guess, b.lane || (Math.random() < 0.5 ? 1 : -1));
+        const v2 = v ? viaPoint({ x: v.x, z: v.z }, guess, b.lane || 1) : null;
+        if (v) b.route.push(v);
+        if (v2 && Math.random() < 0.5) b.route.push(v2);
+        b.route.push(guess); return;
+      }
+      if (style === 'roam') { // 맵 이곳저곳을 돌아다니다가 적 쪽으로
+        const cells = []; for (let k = 0; k < 6; k++) { const i = Math.floor(Math.random() * N * N); if (walk[i]) cells.push(i); }
+        if (cells.length) { const c = cellCenter(cells[0]); b.route.push({ x: c[0], z: c[1] }); }
+        b.route.push(guess); return;
+      }
+      // rush: 곧장. 대신 가끔 한 번 꺾어서
+      if (Math.random() < 0.4) { const v = viaPoint(b, guess, Math.random() < 0.5 ? 1 : -1); if (v) b.route.push(v); }
+      b.route.push(guess);
+    }
+
+    function preferredDist(b, w) {
+      let d;
       if (w.melee) return 1.5;
-      if (w.scope) return 34;
-      if (w.pellets) return 7;
-      if (w.range[0] < 25) return 11;
-      return 20;
+      if (w.scope) d = 34;
+      else if (w.pellets) d = 7;
+      else if (w.range[0] < 25) d = 11;
+      else d = 20;
+      if (b.L > 0.15) { const s = avgShotDist(); if (s) { if (s < 9) d += 7 * b.L; else if (s > 26) d -= 6 * b.L; } } // 플레이어가 잘하는 거리를 피함
+      return d;
     }
 
     function turnToward(b, wantYaw, wantPitch, dt) {
@@ -230,11 +462,20 @@
     // ---------------- 봇 한 마리 한 프레임 ----------------
     function think(b, dt, now) {
       const D = b.diff, w = b.gun.w;
+      b.age += dt;
       if (b.target && !b.target.alive) { b.target = null; b.targetVisible = false; }
       b.percT -= dt;
       if (b.percT <= 0) { b.percT = 0.12; perceive(b, now); }
       if (b.firedT > 0) b.firedT -= dt;
       if (b.blindT > 0) b.blindT -= dt;
+      if (b.flinchT > 0) b.flinchT -= dt;
+      if (b.recoil > 0) b.recoil = Math.max(0, b.recoil - 3 * dt);
+      b.wobPh += dt;
+      // 어디선가 맞았으면 쏜 쪽을 확인하러 감
+      if (b.hurtFrom) {
+        const a = b.hurtFrom; b.hurtFrom = null;
+        if (a.alive && a.team !== b.team && !b.targetVisible) { b.lastSeen = { x: a.x, z: a.z }; b.lastSeenT = now; b.route = []; b.holding = false; b.path = null; b.pauseT = 0; }
+      }
 
       let trigger = false, mx = 0, mz = 0, speed = 0;
       const sin = Math.sin(b.yaw), cos = Math.cos(b.yaw);
@@ -242,6 +483,7 @@
 
       if (b.target && b.targetVisible && b.target.alive) {
         const t = b.target;
+        b.holding = false; b.pauseT = 0;
         const ty = t.y - (b.aimHead ? 0.1 : 0.55);
         const dx = t.x - b.x, dz = t.z - b.z, dy = ty - b.y, hd = Math.hypot(dx, dz), dist = Math.hypot(hd, dy);
         const wantYaw = Math.atan2(-dx, -dz), wantPitch = Math.atan2(dy, hd);
@@ -252,36 +494,73 @@
           trigger = true;
           // 사람처럼 짧게 몰아 쏘고 쉬기를 반복(난이도가 낮을수록 쉬는 시간이 김)
           b.burstT -= dt;
-          if (b.burstT <= 0) { b.bursting = !b.bursting; const r = b.bursting ? D.burstOn : D.burstOff; b.burstT = r[0] + Math.random() * (r[1] - r[0]); }
+          if (b.burstT <= 0) {
+            b.bursting = !b.bursting;
+            const r = b.bursting ? D.burstOn : D.burstOff; b.burstT = r[0] + Math.random() * (r[1] - r[0]);
+            if (b.bursting) { // 새 연사를 시작할 때마다 "이번엔 빗나가는 연사"인지 정함: 처음엔 옆으로 어긋나다가 보정함
+              const pm = clamp(D.pMiss + Math.min(0.2, b.tgtSpeed * 0.03) + (b.flinchT > 0 ? 0.2 : 0), 0, 0.9);
+              if (Math.random() < pm) {
+                const a = rnd(D.miss[0], D.miss[1]), sgn = Math.random() < 0.5 ? -1 : 1, T = rnd(0.35, 0.8);
+                b.miss = { y: sgn * a, p: rnd(-0.5, 0.5) * a, t: T, T };
+              } else b.miss = null;
+            }
+          }
           if (!b.bursting) trigger = false;
         }
 
-        // 거리 유지 + 좌우 이동(스트레이프)
-        const pref = preferredDist(w);
-        const radial = hd > pref + 3 ? 1 : hd < pref - 3 ? -1 : 0;
+        // 거리 유지 + 좌우 이동(스트레이프). 매복 중이던 봇은 제자리에서 버팀
+        const pref = preferredDist(b, w), stand = b.style === 'hold' && b.holdSpot && Math.hypot(b.x - b.holdSpot.x, b.z - b.holdSpot.z) < 4;
+        const radial = stand ? 0 : hd > pref + 3 ? 1 : hd < pref - 3 ? -1 : 0;
         b.strafeT -= dt;
         if (b.strafeT <= 0) { b.strafeDir = [-1, 0, 1, 1, -1][Math.floor(Math.random() * 5)]; b.strafeT = 0.4 + Math.random() * 1.1; }
-        mx = fwdX * radial + rightX * b.strafeDir * D.strafe;
-        mz = fwdZ * radial + rightZ * b.strafeDir * D.strafe;
-        speed = 3.4 * w.move;
+        const sk = D.strafe * (stand ? 0.45 : 1);
+        mx = fwdX * radial + rightX * b.strafeDir * sk;
+        mz = fwdZ * radial + rightZ * b.strafeDir * sk;
+        speed = 3.4 * w.move * b.spdK;
         if (b.gun.reload) speed *= 0.7;
         b.path = null;
       } else {
-        // 이동(수색): 목표까지 길찾기
-        b.pathT -= dt; b.huntT -= dt;
-        if (b.huntT <= 0 || !b.goal) { pickGoal(b, now); b.huntT = 5; b.pathT = 0; }
-        if (b.goal && (b.pathT <= 0 || !b.path)) {
-          b.path = findPath(b.x, b.z, b.goal.x, b.goal.z);
-          b.pathT = 1.2;
-        }
-        if (b.path && b.path.length) {
-          const p = b.path[0];
-          const dx = p[0] - b.x, dz = p[1] - b.z, d = Math.hypot(dx, dz);
-          if (d < 0.7) { b.path.shift(); if (!b.path.length && b.lastSeen) b.lastSeen = null; }
-          else {
-            mx = dx / d; mz = dz / d; speed = 4.6 * w.move;
-            turnToward(b, Math.atan2(-dx, -dz), 0, dt);
+        // 이동(수색/순찰/매복)
+        if (b.pauseT > 0) { // 잠깐 멈춰서 주변을 살핌
+          b.pauseT -= dt;
+          turnToward(b, b.yaw + Math.sin(b.age * 1.6 + b.scanPh) * 0.5, 0, dt);
+        } else if (b.holding) {
+          b.holdT -= dt;
+          turnToward(b, b.holdDir + Math.sin(b.age * 0.9 + b.scanPh) * 0.9, 0, dt); // 매복: 적이 올 방향을 좌우로 훑음
+          if (b.holdT <= 0) { b.holding = false; b.style = Math.random() < 0.5 ? 'flank' : 'rush'; b.route = []; }
+        } else {
+          if (!b.route.length) planRoute(b, now);
+          // 새로운 무전 정보가 오면 일부는 계획을 바꿈 (모두가 같은 곳으로 몰리지 않게 확률적으로)
+          const it = teamIntel[b.team];
+          if (it && it.t > b.planT + 1 && now - b.planT > 2.5 && b.style !== 'hold' && Math.random() < dt * 0.6) planRoute(b, now);
+          const g = b.route[0];
+          if (g) {
+            b.pathT -= dt;
+            if (!b.path || b.pathT <= 0) {
+              b.path = findPath(b.x, b.z, g.x, g.z, { seed: b.seed, noise: 0.5 + 0.4 * hash(b.seed, 7), team: b.team });
+              b.pathT = 1.5 + rnd(0, 0.7);
+              if (!b.path) { b.route.shift(); b.path = null; }
+            }
+            if (b.path && b.path.length) {
+              const p = b.path[0];
+              const dx = p[0] - b.x, dz = p[1] - b.z, d = Math.hypot(dx, dz);
+              const final = b.path.length === 1;
+              if (d < (final && !b.route[1] ? 0.7 : 1.3)) {
+                b.path.shift();
+                if (!b.path.length) { // 이 지점에 도착
+                  const done = b.route.shift(); b.path = null; b.pathT = 0;
+                  if (done && done.chase) b.lastSeen = null;
+                  if (done && done.hold) { b.holding = true; b.holdT = rnd(6, 14); }
+                  else if (done && !b.route.length && Math.random() < 0.5 && D.key !== 'insane') b.pauseT = rnd(0.4, 1.0);
+                }
+              } else {
+                mx = dx / d; mz = dz / d; speed = 4.6 * w.move * b.spdK;
+                turnToward(b, Math.atan2(-dx, -dz), 0, dt);
+              }
+            } else if (b.path && !b.path.length) { b.route.shift(); b.path = null; }
           }
+          b.nextPause -= dt;
+          if (b.nextPause <= 0) { b.nextPause = rnd(6, 12); if (Math.random() < 0.5) b.pauseT = rnd(0.35, 0.9); }
         }
         if (b.gun.ammo < w.mag * 0.5) { b.stuckT = 0; W.reload(b.gun); } // 싸움이 없을 때 미리 장전
       }
@@ -293,14 +572,18 @@
         const k = speed * dt / Math.max(1, len);
         phys.tryMove(b, b.x + mx * k, b.z);
         phys.tryMove(b, b.x, b.z + mz * k);
+        const ci = cellOf(b.x, b.z); traffic[b.team][ci[1] * N + ci[0]] += dt;
       }
       phys.gravity(b, dt, false);
 
-      // 끼임 감지 → 길을 새로 찾음
+      // 끼임 감지 → 길을 새로 찾음 (계속 끼이면 계획 자체를 다시 세움)
       b.stuckCheckT -= dt;
       if (b.stuckCheckT <= 0) {
         b.stuckCheckT = 0.6;
-        if (b.moving && Math.hypot(b.x - b.lastPX, b.z - b.lastPZ) < 0.25) { b.path = null; b.pathT = 0; b.huntT = 0; if (b.target) b.goal = { x: b.target.x, z: b.target.z }; }
+        if (b.moving && Math.hypot(b.x - b.lastPX, b.z - b.lastPZ) < 0.25) {
+          b.path = null; b.pathT = 0; b.stuckN++;
+          if (b.stuckN >= 3) { b.route = []; b.stuckN = 0; }
+        } else if (b.moving) b.stuckN = 0;
         b.lastPX = b.x; b.lastPZ = b.z;
       }
 
@@ -310,10 +593,23 @@
       // 발사
       const shots = W.update(b.gun, dt, trigger);
       if (shots > 0) {
-        const dirX = -Math.sin(b.yaw) * Math.cos(b.pitch), dirY = Math.sin(b.pitch), dirZ = -Math.cos(b.yaw) * Math.cos(b.pitch);
+        // 조준 흔들림 + (미스 연사일 때) 어긋난 각도 + 연사 반동 + 움찔
+        let yaw = b.yaw, pitch = b.pitch;
+        const wob = D.wob * DEG;
+        yaw += (Math.sin(b.wobPh * 1.7 + b.wobA) + 0.5 * Math.sin(b.wobPh * 3.1 + b.wobB)) * wob;
+        pitch += (Math.sin(b.wobPh * 2.1 + b.wobB) + 0.5 * Math.sin(b.wobPh * 3.7 + b.wobA)) * wob * 0.7;
+        if (b.miss) {
+          const k = Math.max(0, b.miss.t / b.miss.T); // 시간이 지날수록 보정해서 점점 맞아 들어감
+          yaw += b.miss.y * k * DEG; pitch += b.miss.p * k * DEG;
+          b.miss.t -= 0.12;
+        }
+        if (b.flinchT > 0) { yaw += rnd(-1, 1) * 3 * (b.flinchT / 0.5) * DEG; pitch += rnd(-1, 1) * 2 * (b.flinchT / 0.5) * DEG; }
+        pitch += b.recoil * 0.5 * DEG;
+        const dirX = -Math.sin(yaw) * Math.cos(pitch), dirY = Math.sin(pitch), dirZ = -Math.cos(yaw) * Math.cos(pitch);
         const base = w.scope ? w.spread[1] : (w.spread[0] + w.spread[1]) / 2;
-        // 오차 = 기본 오차 + 상대가 움직이는 속도 + 내가 좌우로 움직이는 중이면 조금 더
-        const aimErr = D.aim + b.tgtSpeed * D.moveAim + (b.strafeDir ? D.aim * 0.25 : 0);
+        // 오차 = 기본 오차 + 상대가 움직이는 속도 + 내가 좌우로 움직이는 중이면 조금 더 + 연사 반동
+        const aimErr = D.aim + b.tgtSpeed * D.moveAim + (b.strafeDir ? D.aim * 0.25 : 0) + b.recoil * D.rec * 0.5;
+        b.recoil = Math.min(4, b.recoil + 0.45);
         G.shoot(b, b.x, b.y, b.z, dirX, dirY, dirZ, w, Math.hypot(base * 0.6, aimErr));
       }
     }
@@ -352,8 +648,42 @@
       }
     }
 
-    return { bots, spawn, clear, update, DIFFS, NAMES, PRIMARIES, nav: { walk, findPath } };
+    // ---------------- 플레이어 관찰 / 학습 (main.js 가 호출) ----------------
+    function beginMatch() { // 새 경기 시작: 이번 경기 관찰 기록 초기화
+      sess.heat.fill(0); sess.total = 0; sess.mapId = mapId; sess.shotN = 0; sess.shotSum = 0; sess.adapt = 0; sess.rounds = 0;
+      buildHeatMix();
+    }
+    function observePlayer(dt, P) { if (P && P.alive) { sess.heat[gridIdx(P.x, P.z)] += dt; sess.total += dt; } }
+    function observeShot(dist) { if (Number.isFinite(dist) && dist > 0 && dist < 120) { sess.shotN++; sess.shotSum += dist; } }
+    function roundEnd(playerWon) { // 플레이어가 라운드를 이기면 AI가 더 배우고, 지면 조금 풀어줌
+      sess.rounds++;
+      sess.adapt = clamp(sess.adapt + (playerWon === true ? 0.14 : playerWon === false ? -0.06 : 0), 0, 0.6);
+      buildHeatMix();
+    }
+    function endMatch(playerWon, diffKey) { // 경기 끝: 기억을 저장
+      if (sess.total > 20) {
+        const old = profile.maps[mapId], nw = new Array(GN * GN);
+        const norm = sess.heat.reduce((s, v) => s + v, 0) || 1;
+        for (let i = 0; i < nw.length; i++) { const nv = sess.heat[i] / norm; nw[i] = Math.round((old ? old.heat[i] * 0.65 + nv * 0.35 : nv) * 10000) / 10000; }
+        profile.maps[mapId] = { heat: nw };
+      }
+      profile.matches++;
+      profile.shot.n += sess.shotN; profile.shot.sum += sess.shotSum;
+      if (profile.shot.n > 4000) { profile.shot.sum *= 0.5; profile.shot.n = Math.floor(profile.shot.n * 0.5); }
+      if (LEARN_CAP[diffKey]) profile.lv[diffKey] = clamp((profile.lv[diffKey] || 0) + (playerWon ? 0.12 : 0.04), 0, 1);
+      saveProfile();
+    }
+    function learnInfo(diffKey) { return { L: learnLevel(diffKey), cap: LEARN_CAP[diffKey] || 0, matches: profile.matches }; }
+
+    return { bots, spawn, clear, update, DIFFS, NAMES, PRIMARIES, nav: { walk, findPath }, beginMatch, observePlayer, observeShot, roundEnd, endMatch, learnInfo, _hot: hotspots, _traffic: traffic };
   }
 
-  window.RivalBots = { create, DIFFS, NAMES };
+  // 기억 보기/지우기 (로비 화면용)
+  function memory() {
+    const maps = Object.keys(profile.maps).length;
+    return { matches: profile.matches, lv: Object.assign({}, profile.lv), maps, shotDist: profile.shot.n >= 12 ? Math.round(profile.shot.sum / profile.shot.n) : 0 };
+  }
+  function resetMemory() { profile = emptyProfile(); sess.adapt = 0; sess.heat.fill(0); sess.total = 0; saveProfile(); }
+
+  window.RivalBots = { create, DIFFS, NAMES, memory, resetMemory, sanitizeProfile, LEARN_CAP };
 })();

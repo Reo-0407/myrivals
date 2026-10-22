@@ -67,13 +67,14 @@ const clampInt = (v, max) => Math.max(0, Math.min(max, Math.floor(Number(v) || 0
 const publicStats = (p) => ({ nick: p.nick, wins: p.wins, losses: p.losses, kills: p.kills, deaths: p.deaths });
 
 // 접속 등록 남용 방지: 같은 주소에서 10분에 30번까지 (계정을 무한히 만드는 것 방지)
+const JOIN_LIMIT = Number(process.env.JOIN_LIMIT) || 30; // 테스트할 때만 환경변수 JOIN_LIMIT 로 크게 열어 둠
 const joinLog = new Map();
 function joinAllowed(ip) {
   const now = Date.now(), e = joinLog.get(ip);
   if (!e || now > e.reset) { joinLog.set(ip, { n: 1, reset: now + 10 * 60 * 1000 }); return true; }
   e.n++;
   if (joinLog.size > 5000) joinLog.clear();
-  return e.n <= 30;
+  return e.n <= JOIN_LIMIT;
 }
 
 const router = express.Router();

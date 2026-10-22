@@ -22,6 +22,7 @@
 
 - 상점(`shop.js`): 코인/보유/장착은 localStorage `rival_wallet`(서버 저장 없음). 스킨은 `models.js`의 `partMat`이 색을 입힘(빛남/무지개는 전용 재질이라 `userData.own`을 dispose). 경기 후 코인은 `RivalShop.reward`.
 - 관전: 죽으면 `updateSpectate()`가 살아 있는 아군 시점으로 카메라를 옮김.
+- 봇 AI v2(`bots.js`): 봇마다 역할(돌격/우회/매복/순찰)·팀 레인·길 비용 소음·지나간 길 기피로 동선이 매번 다름. 보통 이상 난이도는 플레이어의 위치 분포(16x16 열지도)·교전 거리를 기억해(`localStorage rival_profile`) 학습 수준 L(난이도별 상한 normal .35/hard .7/insane 1)만큼 반응·조준이 좋아지고 자주 있는 곳을 노림. 입문/쉬움은 학습 안 함. 빗나감: 조준 흔들림 `wob`, 연사마다 `pMiss` 확률로 어긋난 연사, 맞으면 움찔(`flinchT`), 연사 반동. 값은 `DIFFS` 표에서 조절. main.js 연결: `beginMatch/observePlayer/observeShot/roundEnd/endMatch`.
 - 보안: 저장소/목록 객체는 `Object.create(null)`("__proto__" 오염 방지), 서버는 id 형식 검증. 설정/지갑은 불러올 때 값 검사.
 
 ## 규칙
