@@ -243,7 +243,7 @@
     scene.background = new THREE.Color(world.sky || 0x9db7d4);
     scene.fog = new THREE.Fog(world.sky || 0x9db7d4, 45, 130);
     if (!phys) phys = Phys.create(boxes);
-    botsApi = RivalBots.create({ scene, phys, boxes, phase: () => match.phase, enemiesOf, shoot, smoked, mapId: () => id });
+    botsApi = RivalBots.create({ scene, phys, boxes, phase: () => match.phase, enemiesOf, shoot, smoked, mapId: () => id, throwUtil: botThrow });
     curMap = id;
   }
 
@@ -793,6 +793,19 @@
     Sfx.shot('swing', 1);
   }
 
+  // 봇이 던지는 유틸리티: 목표 지점(tx,tz)에 떨어지도록 포물선 속도를 계산 (벽에 맞고 튀면 빗나갈 수 있음)
+  function botThrow(b, type, tx, tz) {
+    const w = W.list[type]; if (!w || !w.util) return;
+    if (!nadeGeo) nadeGeo = new THREE.SphereGeometry(0.08, 10, 8);
+    const m = new THREE.Mesh(nadeGeo, new THREE.MeshLambertMaterial({ color: NADE_COLOR[w.util] }));
+    scene.add(m);
+    const dx = tx - b.x, dz = tz - b.z, D = Math.max(1, Math.hypot(dx, dz)), T = clamp(D / 14, 0.4, 1.3);
+    const sp = D / T, vy = (9 * T * T - (b.y - 0.3)) / T;
+    let x = b.x, y = b.y - 0.1, z = b.z;
+    nades.push({ w, type: w.util, x, y, z, vx: dx / D * sp, vy, vz: dz / D * sp, t: w.fuse, m, owner: b });
+    Sfx.shot('swing', Math.max(0, 1 - Math.hypot(b.x - P.x, b.z - P.z) / 50));
+  }
+
   function addBlast(x, y, z, r, color) {
     const m = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85 }));
     m.position.set(x, y, z); scene.add(m);
@@ -832,7 +845,7 @@
     if (flashing) { Sfx.flashBang(Math.max(0.2, 1 - dP / 60)); addBlast(n.x, n.y, n.z, 1.4, 0xffffff); }
     else { Sfx.boom(Math.max(0.15, 1 - dP / 50)); addBlast(n.x, n.y, n.z, w.radius * 0.5, 0xffa040); }
     all().forEach((e) => {
-      if (!e.alive || (e !== P && e.team === n.owner.team)) return; // 아군은 안전, 던진 나는 영향받음
+      if (!e.alive || (e.team === n.owner.team && e !== n.owner)) return; // 아군은 안전, 던진 본인은 영향받음
       const cy = e.y - (flashing ? 0.2 : 0.6);
       const dx = e.x - n.x, dy = cy - (n.y + 0.2), dz = e.z - n.z, d = Math.hypot(dx, dy, dz);
       if (d > w.radius) return;
@@ -1224,7 +1237,7 @@
   // 주소 끝에 ?debug 를 붙였을 때만 테스트용으로 내부 상태를 노출
   if (DEBUG) {
     window.__rival = {
-      P, keys, inp, boxes, match, W, joy,
+      P, keys, inp, boxes, match, W, joy, get now() { return now; },
       get guns() { return guns; }, get cur() { return cur; }, get bots() { return botsApi.bots; },
       all, switchTo, doReload, startRound, castRay, get nav() { return botsApi.nav; },
       get ads() { return adsT; }, botStats, get vm() { return vm; }, shop: RivalShop, get spec() { return specTarget; }, settings, get world() { return world; }, loadMap, get curMap() { return curMap; }, mem: () => ({ children: scene.children.length, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, nades: nades.length, smokes: smokes.length, blasts: blasts.length }), step: (n, dt) => { for (let i = 0; i < n; i++) update(dt); }, rangeStats, startRangeSession, resetRangeStats, nades, smokes, blasts, smoked, get sbOpen() { return sbOpen; },

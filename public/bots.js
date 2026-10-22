@@ -31,6 +31,8 @@
     hard:   { rush: 0.2, flank: 0.3, hold: 0.35, roam: 0.15 },
     insane: { rush: 0.2, flank: 0.3, hold: 0.35, roam: 0.15 },
   };
+  // 라운드 시작 때 유틸리티(수류탄/섬광탄/연막탄)를 들고 나올 확률
+  const UTIL_P = { rookie: 0, easy: 0.1, normal: 0.3, hard: 0.6, insane: 0.9 };
   // 학습으로 얼마나 강해질 수 있는지 (입문/쉬움은 학습 안 함)
   const LEARN_CAP = { normal: 0.35, hard: 0.7, insane: 1 };
 
@@ -204,11 +206,34 @@
       return out;
     }
 
+    // 가장 큰 이어진 지역(다른 곳과 길이 이어진 칸들). 막힌 틈새 칸은 목적지/매복 후보에서 뺌
+    const reach = new Uint8Array(N * N);
+    (function labelMain() {
+      const lab = new Int32Array(N * N).fill(-1); let best = -1, bestN = 0, id = 0;
+      for (let s0 = 0; s0 < N * N; s0++) {
+        if (!walk[s0] || lab[s0] >= 0) continue;
+        const q = [s0]; lab[s0] = id; let n = 0;
+        while (q.length) {
+          const c = q.pop(); n++;
+          const cx = c % N, cz = (c / N) | 0;
+          for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const nx = cx + dx, nz = cz + dz;
+            if (nx < 0 || nz < 0 || nx >= N || nz >= N) continue;
+            const ni = nz * N + nx;
+            if (walk[ni] && lab[ni] < 0) { lab[ni] = id; q.push(ni); }
+          }
+        }
+        if (n > bestN) { bestN = n; best = id; }
+        id++;
+      }
+      for (let i = 0; i < N * N; i++) if (lab[i] === best) reach[i] = 1;
+    })();
+
     // ---------------- 매복 자리 후보: 시야가 트이면서 근처에 엄폐물이 있는 곳 ----------------
     const hotspots = [];
     (function buildHotspots() {
       const cells = [];
-      for (let i = 0; i < N * N; i++) if (walk[i]) cells.push(i);
+      for (let i = 0; i < N * N; i++) if (reach[i]) cells.push(i);
       if (!cells.length) return;
       const scored = [];
       for (let k = 0; k < 260; k++) {
@@ -305,7 +330,7 @@
         seed: sd, style: pickStyle(D0.key), lane: opts.dummy ? 0 : laneSeq[opts.team][laneN[opts.team]++ % 3], route: [], holding: false, holdT: 0, holdDir: 0, holdSpot: null,
         age: 0, planT: -99, pauseT: opts.dummy ? 0 : rnd(0, 0.6), nextPause: rnd(5, 11), spdK: rnd(0.92, 1.08),
         wobA: Math.random() * 6.28, wobB: Math.random() * 6.28, wobPh: Math.random() * 20,
-        miss: null, recoil: 0, flinchT: 0, hurtFrom: null, scanPh: Math.random() * 6.28,
+        util: !opts.dummy && Math.random() < (UTIL_P[D0.key] || 0) ? ['frag', 'flash', 'flash', 'smoke'][Math.floor(Math.random() * 4)] : null, miss: null, recoil: 0, flinchT: 0, hurtFrom: null, scanPh: Math.random() * 6.28,
       };
       m.root.position.set(b.x, 0, b.z);
       m.root.rotation.y = b.yaw;
@@ -433,7 +458,7 @@
         b.route.push(guess); return;
       }
       if (style === 'roam') { // 맵 이곳저곳을 돌아다니다가 적 쪽으로
-        const cells = []; for (let k = 0; k < 6; k++) { const i = Math.floor(Math.random() * N * N); if (walk[i]) cells.push(i); }
+        const cells = []; for (let k = 0; k < 6; k++) { const i = Math.floor(Math.random() * N * N); if (reach[i]) cells.push(i); }
         if (cells.length) { const c = cellCenter(cells[0]); b.route.push({ x: c[0], z: c[1] }); }
         b.route.push(guess); return;
       }
@@ -519,8 +544,15 @@
         speed = 3.4 * w.move * b.spdK;
         if (b.gun.reload) speed *= 0.7;
         b.path = null;
+        // 체력이 낮으면 연막을 앞에 깔고 물러남 / 가까운 적에게 섬광탄 / 숨은 적 위치엔 수류탄
+        if (b.util === 'smoke' && b.hp < 45 && hd > 6) throwUtil(b, 'smoke', b.x + (dx / hd) * 4, b.z + (dz / hd) * 4);
+        else if (b.util === 'flash' && hd > 9 && hd < 22 && b.reactT > 0) throwUtil(b, 'flash', t.x, t.z);
       } else {
         // 이동(수색/순찰/매복)
+        if (b.util && b.util !== 'smoke' && b.lastSeen && now - b.lastSeenT < 5 && now - b.lastSeenT > 0.8) {
+          const ud = Math.hypot(b.lastSeen.x - b.x, b.lastSeen.z - b.z);
+          if (ud > 8 && ud < 24) throwUtil(b, b.util, b.lastSeen.x, b.lastSeen.z);
+        }
         if (b.pauseT > 0) { // 잠깐 멈춰서 주변을 살핌
           b.pauseT -= dt;
           turnToward(b, b.yaw + Math.sin(b.age * 1.6 + b.scanPh) * 0.5, 0, dt);
@@ -539,7 +571,7 @@
             if (!b.path || b.pathT <= 0) {
               b.path = findPath(b.x, b.z, g.x, g.z, { seed: b.seed, noise: 0.5 + 0.4 * hash(b.seed, 7), team: b.team });
               b.pathT = 1.5 + rnd(0, 0.7);
-              if (!b.path) { b.route.shift(); b.path = null; }
+              if (!b.path) { b.route.shift(); b.path = null; b.pauseT = 0.3; } // 길이 없으면 잠깐 쉬었다가 다시 계획 (매 프레임 길찾기 방지)
             }
             if (b.path && b.path.length) {
               const p = b.path[0];
@@ -612,6 +644,13 @@
         b.recoil = Math.min(4, b.recoil + 0.45);
         G.shoot(b, b.x, b.y, b.z, dirX, dirY, dirZ, w, Math.hypot(base * 0.6, aimErr));
       }
+    }
+
+    // 유틸리티 던지기 (한 라운드에 한 번). 실제 던지기/폭발은 main.js 가 처리
+    function throwUtil(b, type, tx, tz) {
+      if (!G.throwUtil || !b.util || b.util !== type) return;
+      b.util = null; b.pauseT = 0.45;
+      G.throwUtil(b, type, tx, tz);
     }
 
     // 사격장 과녁: 생각하지 않고 서 있거나 좌우로 왕복만 함 (항상 플레이어 쪽(+z)을 봄)
