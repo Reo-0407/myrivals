@@ -142,7 +142,7 @@
     return { scene, opts, boxes, W, box, deco, stairsZ, stairsX, barrel, mirrorZ };
   }
 
-  const maps = {};
+  const maps = Object.create(null); // 프로토타입 없는 객체(이름이 "__proto__" 여도 맵으로 착각하지 않음)
   maps.warehouse = { name: '창고 단지', build(c) {
     const { scene, opts, boxes, W, box, deco, stairsZ, stairsX, barrel, mirrorZ } = c;
 

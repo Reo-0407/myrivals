@@ -47,19 +47,35 @@
     heal: { tip: 0, grip: [0, 0, -0.02], fore: null, parts: [['c', .032, .12, 0, 0, -.05, 0x2f8fe5, false], ['c', .034, .02, 0, .07, -.05, METAL, false], ['c', .0335, .04, 0, 0, -.05, 0xffffff, false]] },
   };
 
-  function addParts(g, parts) {
+  // 스킨: 총 몸체(어두운 부분)는 skin.main, 보조 부분(손잡이/개머리판 등)은 skin.sub 색으로 바꿈. 금속/장식 부분은 그대로.
+  // glow(빛남)/rainbow(무지개)는 부품마다 전용 재질이 필요해서 g.userData.own 에 모아두고, 쓰고 나면 dispose 해야 함.
+  function partMat(color, skin, g) {
+    if (!skin || !skin.main) return mat(color);
+    const c = (color === DARK || color === OLIVE) ? skin.main : (color === MID || color === WOOD) ? skin.sub : color;
+    if (c === color) return mat(color);
+    if (skin.rainbow || skin.glow) {
+      const m = new THREE.MeshLambertMaterial({ color: c, emissive: skin.glow ? c : 0x000000 });
+      if (skin.glow) m.emissiveIntensity = 0.35;
+      (g.userData.own = g.userData.own || []).push(m);
+      if (skin.rainbow) (g.userData.rainbow = g.userData.rainbow || []).push(m);
+      return m;
+    }
+    return mat(c);
+  }
+
+  function addParts(g, parts, skin) {
     parts.forEach((p) => {
       let m;
-      if (p[0] === 'b') { m = new THREE.Mesh(box(p[1], p[2], p[3]), mat(p[7])); m.position.set(p[4], p[5], p[6]); }
-      else if (p[0] === 'c') { m = new THREE.Mesh(cyl(p[1], p[2]), mat(p[6])); m.position.set(p[3], p[4], p[5]); if (p[7]) m.rotation.x = Math.PI / 2; }
-      else { m = new THREE.Mesh(sph(p[1]), mat(p[5])); m.position.set(p[2], p[3], p[4]); }
+      if (p[0] === 'b') { m = new THREE.Mesh(box(p[1], p[2], p[3]), partMat(p[7], skin, g)); m.position.set(p[4], p[5], p[6]); }
+      else if (p[0] === 'c') { m = new THREE.Mesh(cyl(p[1], p[2]), partMat(p[6], skin, g)); m.position.set(p[3], p[4], p[5]); if (p[7]) m.rotation.x = Math.PI / 2; }
+      else { m = new THREE.Mesh(sph(p[1]), partMat(p[5], skin, g)); m.position.set(p[2], p[3], p[4]); }
       g.add(m);
     });
   }
 
-  function weapon(id) {
+  function weapon(id, skin) {
     const def = WEAPONS[id], g = new THREE.Group();
-    addParts(g, def.parts);
+    addParts(g, def.parts, skin);
     if (def.tip) { // 총구 불꽃 (평소엔 숨김)
       const f = new THREE.Mesh(box(0.11, 0.11, 0.03), new THREE.MeshBasicMaterial({ color: 0xffe08a }));
       f.position.z = -def.tip - 0.02; f.visible = false; g.add(f); g.userData.flash = f;
@@ -69,8 +85,8 @@
   }
 
   // 1인칭 손에 든 총: 무기 + 양손/소매
-  function viewmodel(id, sleeve) {
-    const g = new THREE.Group(), w = weapon(id), def = WEAPONS[id];
+  function viewmodel(id, sleeve, skin) {
+    const g = new THREE.Group(), w = weapon(id, skin), def = WEAPONS[id];
     g.add(w);
     const arm = (pos, len) => { // 손 + 팔(뒤쪽 카메라 방향으로 뻗음)
       const hand = new THREE.Mesh(box(0.065, 0.06, 0.1), mat(SKIN)); hand.position.set(pos[0], pos[1], pos[2]); g.add(hand);
@@ -79,7 +95,7 @@
     };
     arm(def.grip, 0.38);
     if (def.fore) arm(def.fore, 0.55);
-    g.userData.flash = w.userData.flash;
+    g.userData.flash = w.userData.flash; g.userData.own = w.userData.own; g.userData.rainbow = w.userData.rainbow;
     return g;
   }
 

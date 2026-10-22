@@ -47,6 +47,15 @@
     Object.assign(settings, saved);
   } catch (e) {}
   settings.v = SETTINGS_VER;
+  // 저장된 설정값이 이상해도(손으로 고쳤거나 깨졌어도) 게임이 멈추지 않게 값 범위/종류를 검사해서 기본값으로 되돌림
+  const num = (v, a, b, d) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(a, Math.min(b, v)) : d);
+  settings.sens = num(settings.sens, 0.3, 3, 1);
+  settings.fov = num(settings.fov, 60, 100, 80);
+  settings.mode = [1, 2, 3, 4].includes(settings.mode) ? settings.mode : 2;
+  settings.assist = [0, 1, 2].includes(settings.assist) ? settings.assist : defaults.assist;
+  settings.auto = typeof settings.auto === 'boolean' ? settings.auto : defaults.auto;
+  if (!['rookie', 'easy', 'normal', 'hard', 'insane'].includes(settings.diff)) settings.diff = defaults.diff;
+  if (typeof settings.map !== 'string' || !RivalMap.has(settings.map)) settings.map = 'warehouse';
   settings.loadout = Object.assign({}, defaults.loadout, settings.loadout);
   ['primary', 'secondary', 'melee', 'utility'].forEach((s) => { const id = settings.loadout[s]; if (!W.list[id] || W.list[id].slot !== s) settings.loadout[s] = defaults.loadout[s]; });
   const saveSettings = () => safeSet('rival_settings', JSON.stringify(settings));
@@ -164,10 +173,13 @@
   $('help-btn').onclick = showHelp;
   $('help-close').onclick = () => { $('help').classList.add('hidden'); safeSet('rival_help', '1'); };
 
+  const applyCrosshair = () => { $('xh').style.setProperty('--xhc', RivalShop.equippedXh().color); }; // 장착한 조준점 색
+
   function enterLobby() {
     $('lobby-nick').textContent = myNick;
     $('my-stats').textContent = myStats ? '내 전적: ' + myStats.wins + '승 ' + myStats.losses + '패 · ' + myStats.kills + '킬 ' + myStats.deaths + '데스' : '';
     show('screen-lobby');
+    RivalShop.refreshBadge();
     loadBoard();
     if (!safeGet('rival_help')) showHelp(); // 처음 들어온 사람에게 한 번 보여줌
   }
@@ -431,6 +443,7 @@
     $('result').classList.add('hidden'); sbOpen = false;
     $('feed').innerHTML = '';
     setBanner('');
+    applyCrosshair();
     showOverlay('준비 완료', (world.name + ' · ' + match.teamSize + ' vs ' + match.teamSize + ' · ' + botsApi.DIFFS[match.diff].name + ' · ' + WIN_ROUNDS + '선승'), '시작');
   }
 
@@ -566,6 +579,8 @@
     if (document.pointerLockElement) document.exitPointerLock();
     $('res-title').textContent = won ? '🏆 승리!' : '패배';
     $('res-score').textContent = '라운드 ' + match.score.A + ' : ' + match.score.B;
+    const gain = RivalShop.reward({ won, kills: match.kills, roundsWon: match.score.A, diff: match.diff });
+    $('res-coins').textContent = '💰 +' + gain + ' 코인 (보유 ' + RivalShop.coins() + ')';
     $('res-stats').textContent = '이번 매치: ' + match.kills + '킬 ' + match.deaths + '데스 · 기록을 저장하는 중…';
     $('result').classList.remove('hidden');
     try {
@@ -874,8 +889,9 @@
   // 손에 든 총 (뷰모델)
   // =====================================================================
   function setViewmodel(id) {
-    if (vm) gunScene.remove(vm);
-    vm = RivalModels.viewmodel(id, 0x3b82f6); // 파란 팀 소매
+    if (vm) { gunScene.remove(vm); (vm.userData.own || []).forEach((m) => m.dispose()); } // 빛나는/무지개 스킨의 전용 재질 정리
+    const skin = RivalShop.equippedSkin();
+    vm = RivalModels.viewmodel(id, 0x3b82f6, skin.main ? skin : null); // 파란 팀 소매 + 장착한 스킨
     gunScene.add(vm);
   }
   function updateViewmodel(dt, moving) {
@@ -890,6 +906,8 @@
     vmRaise = Math.max(0, vmRaise - dt * 4.5); y -= vmRaise * 0.35;
     if (swingT > 0) { swingT -= dt; const k = Math.sin(Math.PI * (1 - clamp(swingT / 0.22, 0, 1))); rx -= k * 0.9; ry += k * 0.5; x -= k * 0.16; }
     vm.position.set(x, y, z); vm.rotation.set(rx, ry, rz); vm.scale.setScalar(0.88);
+    const rb = vm.userData.rainbow; // 무지개 스킨: 색이 계속 바뀜
+    if (rb) rb.forEach((m, i) => m.color.setHSL((now * 0.25 + i * 0.13) % 1, 0.85, 0.55));
     vm.visible = P.alive && !(w.scope && adsT > 0.8);
     if (vm.userData.flash) { vm.userData.flash.visible = flashT > 0; if (flashT > 0) flashT -= dt; }
   }
@@ -1194,11 +1212,13 @@
       P, keys, inp, boxes, match, W, joy,
       get guns() { return guns; }, get cur() { return cur; }, get bots() { return botsApi.bots; },
       all, switchTo, doReload, startRound, castRay, get nav() { return botsApi.nav; },
-      get ads() { return adsT; }, get spec() { return specTarget; }, settings, get world() { return world; }, loadMap, get curMap() { return curMap; }, mem: () => ({ children: scene.children.length, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, nades: nades.length, smokes: smokes.length, blasts: blasts.length }), step: (n, dt) => { for (let i = 0; i < n; i++) update(dt); }, rangeStats, startRangeSession, resetRangeStats, nades, smokes, blasts, smoked, get sbOpen() { return sbOpen; },
+      get ads() { return adsT; }, get vm() { return vm; }, shop: RivalShop, get spec() { return specTarget; }, settings, get world() { return world; }, loadMap, get curMap() { return curMap; }, mem: () => ({ children: scene.children.length, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, nades: nades.length, smokes: smokes.length, blasts: blasts.length }), step: (n, dt) => { for (let i = 0; i < n; i++) update(dt); }, rangeStats, startRangeSession, resetRangeStats, nades, smokes, blasts, smoked, get sbOpen() { return sbOpen; },
     };
   }
 
   // ---- 시작 ----
+  RivalShop.init({ getWeapon: () => settings.loadout.primary, onChange: applyCrosshair });
+  applyCrosshair();
   initSettingsUI();
   if (myNick) {
     // 저장된 닉네임을 서버에 다시 등록(서버가 재시작돼 기록이 날아갔어도 복구)

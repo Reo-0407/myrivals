@@ -45,6 +45,7 @@
           </select></div>
         <button id="play-btn" class="btn">매치 시작</button>
         <button id="range-btn" class="btn ghost">🎯 사격장 (연습)</button>
+        <button id="shop-btn" class="btn ghost">🛒 상점 <b id="coin-badge"></b></button>
 
         <h3>로드아웃 (들고 갈 무기)</h3>
         <div id="loadout"></div>
@@ -104,6 +105,7 @@
         <h2 id="res-title"></h2>
         <p id="res-score"></p>
         <p id="res-stats" class="hint"></p>
+        <p id="res-coins" class="coin-line"></p>
         <button id="res-again" class="btn">다시 하기</button>
         <button id="res-lobby" class="btn ghost">로비로</button>
       </div>
@@ -127,6 +129,24 @@
     <div id="rotate-hint">📱 폰을 가로로 돌려주세요</div>
   </div>
 
+  <div id="shop" class="hidden">
+    <div class="ov-box shop-box">
+      <div class="shop-head"><h2>🛒 상점</h2><b id="shop-coins"></b><button id="shop-close" class="btn ghost">닫기</button></div>
+      <div class="shop-body">
+        <div class="shop-pv">
+          <canvas id="shop-canvas"></canvas>
+          <div id="shop-xh" class="hidden"><i class="l"></i><i class="r"></i><i class="t"></i><i class="b"></i></div>
+        </div>
+        <div class="shop-side">
+          <div class="tabs"><button data-tab="skin" class="chip on">무기 스킨</button><button data-tab="xh" class="chip">조준점 색</button></div>
+          <div id="shop-grid"></div>
+          <div class="shop-detail"><b id="shop-name"></b><button id="shop-action" class="btn">-</button><p id="shop-msg" class="hint"></p></div>
+        </div>
+      </div>
+      <p class="hint">코인은 경기를 하면 벌 수 있어요 (이기거나, 적을 처치하거나, 어려운 난이도일수록 많이!). 코인은 이 기기에만 저장돼요.</p>
+    </div>
+  </div>
+
   <div id="help" class="hidden"><div class="ov-box"><h2>🎮 조작 도움말</h2><div id="help-body"></div><button id="help-close" class="btn">알겠어요</button></div></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -134,6 +154,7 @@
   <script src="map-village.js"></script>
   <script src="weapons.js"></script>
   <script src="models.js"></script>
+  <script src="shop.js"></script>
   <script src="physics.js"></script>
   <script src="audio.js"></script>
   <script src="bots.js"></script>

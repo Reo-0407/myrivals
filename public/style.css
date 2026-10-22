@@ -51,7 +51,7 @@ details .row { margin-top: 10px; }
 #scope i { left: 0; right: 0; top: 50%; height: 2px; margin-top: -1px; }
 #scope b { top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px; }
 #xh { position: absolute; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; --gap: 8px; }
-#xh i { position: absolute; background: #fff; box-shadow: 0 0 2px #000; }
+#xh i { position: absolute; background: var(--xhc, #fff); box-shadow: 0 0 2px #000; }
 #xh .xl, #xh .xr { width: 9px; height: 2px; margin-top: -1px; top: 0; }
 #xh .xl { left: calc(var(--gap) * -1 - 9px); }
 #xh .xr { left: var(--gap); }
@@ -153,3 +153,37 @@ details .row { margin-top: 10px; }
 #spec { position: absolute; left: 50%; bottom: 74px; transform: translateX(-50%); z-index: 3; background: #000b; padding: 7px 16px; border-radius: 12px; font-weight: 700; font-size: 15px; white-space: nowrap; pointer-events: none; }
 #spec.hidden { display: none !important; }
 @media (pointer: coarse) { #spec { bottom: 98px; font-size: 13px; } }
+
+/* ---- 상점 ---- */
+#shop { position: fixed; left: 0; top: 0; width: var(--app-w, 100%); height: var(--app-h, 100dvh); z-index: 40; background: #000d; display: flex; overflow-y: auto; padding: 12px; }
+#shop.hidden { display: none !important; }
+.shop-box { width: min(900px, 96vw); max-width: none !important; align-items: stretch !important; text-align: left !important; background: #141a29; border-radius: 16px; padding: 14px 16px; }
+.shop-head { display: flex; align-items: center; gap: 12px; }
+.shop-head h2 { margin: 0; flex: 1; font-size: 24px; }
+.shop-head b { font-size: 18px; color: #ffd24a; }
+.shop-head .btn { width: auto; padding: 8px 14px; font-size: 15px; }
+.shop-body { display: flex; gap: 14px; flex-wrap: wrap; }
+.shop-pv { position: relative; flex: 1 1 280px; min-height: 150px; background: #0b0e14; border-radius: 12px; overflow: hidden; }
+#shop-canvas { width: 100%; height: 100%; min-height: 150px; display: block; }
+#shop-canvas.hidden { display: none !important; }
+#shop-xh { position: absolute; inset: 0; --xhc: #fff; }
+#shop-xh.hidden { display: none !important; }
+#shop-xh i { position: absolute; background: var(--xhc); box-shadow: 0 0 3px #000; }
+#shop-xh .l, #shop-xh .r { width: 22px; height: 4px; top: calc(50% - 2px); }
+#shop-xh .l { left: calc(50% - 38px); } #shop-xh .r { left: calc(50% + 16px); }
+#shop-xh .t, #shop-xh .b { width: 4px; height: 22px; left: calc(50% - 2px); }
+#shop-xh .t { top: calc(50% - 38px); } #shop-xh .b { top: calc(50% + 16px); }
+.shop-side { flex: 1 1 300px; display: flex; flex-direction: column; gap: 10px; }
+.tabs { display: flex; gap: 8px; }
+#shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+.item { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 6px; border-radius: 10px; border: 2px solid #2a3350; background: #0f1422; color: #fff; cursor: pointer; font-size: 13px; }
+.item .sw { width: 100%; height: 22px; border-radius: 6px; border: 1px solid #fff3; }
+.item .nm { font-weight: 700; text-align: center; }
+.item small { color: #9aa6c0; }
+.item.sel { border-color: #ff4d5e; }
+.item.eq small { color: #4cd964; font-weight: 700; }
+.shop-detail { display: flex; flex-direction: column; gap: 6px; }
+.shop-detail b { font-size: 17px; }
+.coin-line { margin: 0; color: #ffd24a; font-weight: 800; font-size: 20px; }
+#coin-badge { color: #ffd24a; margin-left: 6px; }
+.btn:disabled { background: #2a3350; color: #8a94ad; cursor: default; }

@@ -20,6 +20,10 @@
 - 앉기: `P.eye`(1.7↔1.2). 물리(`physics.js`)와 판정은 캐릭터의 `eye` 값을 사용(없으면 1.7).
 - 폰을 세로로 들면 게임 일시정지(`running()`), 창 전환 시 입력 해제.
 
+- 상점(`shop.js`): 코인/보유/장착은 localStorage `rival_wallet`(서버 저장 없음). 스킨은 `models.js`의 `partMat`이 색을 입힘(빛남/무지개는 전용 재질이라 `userData.own`을 dispose). 경기 후 코인은 `RivalShop.reward`.
+- 관전: 죽으면 `updateSpectate()`가 살아 있는 아군 시점으로 카메라를 옮김.
+- 보안: 저장소/목록 객체는 `Object.create(null)`("__proto__" 오염 방지), 서버는 id 형식 검증. 설정/지갑은 불러올 때 값 검사.
+
 ## 규칙
 - 접속하면 닉네임 입력 → 로비. 관리자/로그인 화면은 만들지 않는다.
 - 무기 밸런스는 `public/weapons.js` 맨 위 표의 숫자만 고친다.
