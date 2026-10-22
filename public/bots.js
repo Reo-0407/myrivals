@@ -330,7 +330,7 @@
         seed: sd, style: pickStyle(D0.key), lane: opts.dummy ? 0 : laneSeq[opts.team][laneN[opts.team]++ % 3], route: [], holding: false, holdT: 0, holdDir: 0, holdSpot: null,
         age: 0, planT: -99, pauseT: opts.dummy ? 0 : rnd(0, 0.6), nextPause: rnd(5, 11), spdK: rnd(0.92, 1.08),
         wobA: Math.random() * 6.28, wobB: Math.random() * 6.28, wobPh: Math.random() * 20,
-        util: !opts.dummy && Math.random() < (UTIL_P[D0.key] || 0) ? ['frag', 'flash', 'flash', 'smoke'][Math.floor(Math.random() * 4)] : null, miss: null, recoil: 0, flinchT: 0, hurtFrom: null, scanPh: Math.random() * 6.28,
+        util: !opts.dummy && Math.random() < (UTIL_P[D0.key] || 0) ? ['frag', 'flash', 'flash', 'smoke'][Math.floor(Math.random() * 4)] : null, spinT: 0, spinDir: 1, miss: null, recoil: 0, flinchT: 0, hurtFrom: null, scanPh: Math.random() * 6.28,
       };
       m.root.position.set(b.x, 0, b.z);
       m.root.rotation.y = b.yaw;
@@ -395,6 +395,10 @@
     const aliveEnemies = (b) => G.enemiesOf(b.team).filter((e) => e.alive);
     // 적이 있을 법한 곳. 학습한 봇은 플레이어가 자주 있던 곳을 노림. 아니면 아무 적 근처(가장 가까운 적만 쫓지 않음)
     function enemyGuess(b) {
+      // 가까이(22m 안) 있는 적은 발소리로 위치를 알아챔: 집 안이든 어디든 그 자리로 곧장 찾아감
+      let near = null, nd = 22;
+      for (const e of aliveEnemies(b)) { const d = Math.hypot(e.x - b.x, e.z - b.z); if (d < nd) { nd = d; near = e; } }
+      if (near) return { x: near.x + rnd(-1.2, 1.2), z: near.z + rnd(-1.2, 1.2), sensed: true };
       if (b.L > 0.05 && Math.random() < 0.15 + 0.7 * b.L) { const h = sampleHeat(); if (h) return h; }
       const en = aliveEnemies(b);
       if (!en.length) return null;
@@ -437,6 +441,11 @@
       b.lastSeen = null;
       let style = b.style;
       if (style === 'hold' && b.age > 45) style = 'rush'; // 너무 오래 숨어 있으면 움직임
+      { // 가까이 있는 적이 있으면 무전보다 그쪽이 먼저 (발소리). 매복 중인 봇은 14m 안일 때만
+        const R = style === 'hold' ? 14 : 22;
+        const ne = aliveEnemies(b).filter((e) => Math.hypot(e.x - b.x, e.z - b.z) < R).sort((p, q) => Math.hypot(p.x - b.x, p.z - b.z) - Math.hypot(q.x - b.x, q.z - b.z))[0];
+        if (ne) { b.route.push({ x: ne.x + rnd(-1.2, 1.2), z: ne.z + rnd(-1.2, 1.2) }); return; }
+      }
       if (fresh && style !== 'hold') { // 무전으로 들은 곳으로 가되, 레인별로 다른 방향에서 접근
         const g = { x: intel.x + rnd(-4, 4), z: intel.z + rnd(-4, 4) };
         const v = b.lane || Math.random() < 0.5 ? viaPoint(b, g, b.lane || (Math.random() < 0.5 ? 1 : -1)) : null;
@@ -553,16 +562,23 @@
           const ud = Math.hypot(b.lastSeen.x - b.x, b.lastSeen.z - b.z);
           if (ud > 8 && ud < 24) throwUtil(b, b.util, b.lastSeen.x, b.lastSeen.z);
         }
-        if (b.pauseT > 0) { // 잠깐 멈춰서 주변을 살핌
+        if (b.spinT > 0) { // 목적지에 도착했는데 적이 안 보이면 제자리에서 한 바퀴 둘러봄
+          b.spinT -= dt; b.yaw += b.spinDir * 4.2 * dt;
+        } else if (b.pauseT > 0) { // 잠깐 멈춰서 주변을 살핌
           b.pauseT -= dt;
           turnToward(b, b.yaw + Math.sin(b.age * 1.6 + b.scanPh) * 0.5, 0, dt);
         } else if (b.holding) {
           b.holdT -= dt;
+          if (b.age > 3 && aliveEnemies(b).some((e) => Math.hypot(e.x - b.x, e.z - b.z) < 14)) b.holdT = 0; // 바로 옆에 적이 있으면 매복을 풀고 찾으러 감
           turnToward(b, b.holdDir + Math.sin(b.age * 0.9 + b.scanPh) * 0.9, 0, dt); // 매복: 적이 올 방향을 좌우로 훑음
           if (b.holdT <= 0) { b.holding = false; b.style = Math.random() < 0.5 ? 'flank' : 'rush'; b.route = []; }
         } else {
           if (!b.route.length) planRoute(b, now);
           // 새로운 무전 정보가 오면 일부는 계획을 바꿈 (모두가 같은 곳으로 몰리지 않게 확률적으로)
+          if (now - b.planT > 3 && b.style !== 'hold') { // 가까운 적이 있는데 엉뚱한 곳으로 가고 있으면 다시 계획
+            const g0 = b.route[0], ne = aliveEnemies(b).find((e) => Math.hypot(e.x - b.x, e.z - b.z) < 22);
+            if (ne && g0 && Math.hypot(g0.x - ne.x, g0.z - ne.z) > 12) planRoute(b, now);
+          }
           const it = teamIntel[b.team];
           if (it && it.t > b.planT + 1 && now - b.planT > 2.5 && b.style !== 'hold' && Math.random() < dt * 0.6) planRoute(b, now);
           const g = b.route[0];
@@ -583,7 +599,7 @@
                   const done = b.route.shift(); b.path = null; b.pathT = 0;
                   if (done && done.chase) b.lastSeen = null;
                   if (done && done.hold) { b.holding = true; b.holdT = rnd(6, 14); }
-                  else if (done && !b.route.length && Math.random() < 0.5 && D.key !== 'insane') b.pauseT = rnd(0.4, 1.0);
+                  else if (done && !b.route.length) { b.spinT = 1.5; b.spinDir = Math.random() < 0.5 ? -1 : 1; }
                 }
               } else {
                 mx = dx / d; mz = dz / d; speed = 4.6 * w.move * b.spdK;

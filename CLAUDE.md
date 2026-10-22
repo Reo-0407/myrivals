@@ -8,7 +8,7 @@
 - 효과음은 Web Audio로 직접 합성. 음원/그림 파일 없음.
 
 ## 파일
-`server.js`, `rival-server.js`(API, `data/rival.json` 저장), `public/`(index.html, main.js, weapons.js, maps.js, map-village.js, models.js, bots.js, physics.js, audio.js, style.css). 자세한 설명은 README.md.
+`server.js`, `rival-server.js`(API, `data/rival.json` 저장), `public/`(index.html, main.js, weapons.js, maps.js, map-village.js, map-harbor.js, models.js, bots.js, physics.js, audio.js, style.css). 자세한 설명은 README.md.
 
 ## 최근 추가
 - 로비 `🎯 사격장`(`match.mode==='range'`): 과녁은 `bots.js`의 `dummy` 봇. 라운드/타이머 규칙은 꺼짐.
@@ -16,7 +16,7 @@
 - 난이도 기본값: 폰 `입문`/PC `쉬움`. 설정 버전(`SETTINGS_VER`)을 올리면 저장된 난이도·보조 설정이 새 기본값으로 초기화됨.
 - 아군 봇은 적보다 한 단계 높은 난이도로 나온다.
 
-- 맵은 `RivalMap.register`로 등록(`maps.js`에 창고, `map-village.js`에 사막 마을). `main.js`의 `loadMap(id)`가 맵 교체 + 봇 길찾기 격자 재생성. 사격장은 항상 창고 맵.
+- 맵은 `RivalMap.register`로 등록(`maps.js`에 창고, `map-village.js`에 사막 마을, `map-harbor.js`에 항구 부두). `main.js`의 `loadMap(id)`가 맵 교체 + 봇 길찾기 격자 재생성. 사격장은 항상 창고 맵.
 - 앉기: `P.eye`(1.7↔1.2). 물리(`physics.js`)와 판정은 캐릭터의 `eye` 값을 사용(없으면 1.7).
 - 폰을 세로로 들면 게임 일시정지(`running()`), 창 전환 시 입력 해제.
 
@@ -24,6 +24,7 @@
 - 관전: 죽으면 `updateSpectate()`가 살아 있는 아군 시점으로 카메라를 옮김.
 - 봇 AI v2(`bots.js`): 봇마다 역할(돌격/우회/매복/순찰)·팀 레인·길 비용 소음·지나간 길 기피로 동선이 매번 다름. 보통 이상 난이도는 플레이어의 위치 분포(16x16 열지도)·교전 거리를 기억해(`localStorage rival_profile`) 학습 수준 L(난이도별 상한 normal .35/hard .7/insane 1)만큼 반응·조준이 좋아지고 자주 있는 곳을 노림. 입문/쉬움은 학습 안 함. 빗나감: 조준 흔들림 `wob`, 연사마다 `pMiss` 확률로 어긋난 연사, 맞으면 움찔(`flinchT`), 연사 반동. 값은 `DIFFS` 표에서 조절. main.js 연결: `beginMatch/observePlayer/observeShot/roundEnd/endMatch`.
 - 봇 유틸리티: 난이도별 확률(`UTIL_P`)로 라운드당 1개. 숨은 적 위치엔 수류탄/섬광탄, 체력 낮으면 연막. 던지기·폭발은 `main.js`의 `botThrow`. 막힌 틈새 칸은 `reach`로 목적지에서 제외.
+- 봇 탐색: 22m 안의 적은 발소리로 위치를 알아채 `planRoute`가 그쪽으로 직행(매복 봇은 14m), 목적지에 도착하면 `spinT`로 한 바퀴 둘러봄.
 - 보안: 저장소/목록 객체는 `Object.create(null)`("__proto__" 오염 방지), 서버는 id 형식 검증. 설정/지갑은 불러올 때 값 검사.
 
 ## 규칙
