@@ -80,9 +80,10 @@
 
   // 경기가 끝났을 때 받는 코인: 참가 10 + 처치당 4(최대 40) + 승리 40 + 이긴 라운드당 5, 난이도 배율
   const MULT = { rookie: 0.6, easy: 0.8, normal: 1, hard: 1.4, insane: 2 };
+  const WINS_MULT = { 1: 0.4, 2: 0.6, 3: 0.8, 5: 1, 7: 1.2, 10: 1.5 };
   function rewardFor(r) {
     const base = 10 + Math.min(40, (r.kills || 0) * 4) + (r.won ? 40 : 0) + (r.roundsWon || 0) * 5;
-    return Math.round(base * (MULT[r.diff] || 1));
+    return Math.round(base * (MULT[r.diff] || 1) * (WINS_MULT[r.wins] || 1)); // 짧은 매치(1선승 등)는 코인을 적게, 긴 매치는 더 줌
   }
   function reward(r) { const n = rewardFor(r); addCoins(n); return n; }
 

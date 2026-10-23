@@ -5,7 +5,8 @@
   const DEG = Math.PI / 180, EYE = 1.7;
   const ROUND_TIME = 90, COUNTDOWN = 3, BETWEEN = 3.2;
   const qs = new URLSearchParams(location.search);
-  const WIN_ROUNDS = Math.max(1, parseInt(qs.get('rounds'), 10) || 5); // 먼저 이기면 승리하는 라운드 수 (테스트용으로 ?rounds=1 가능)
+  const URL_ROUNDS = Math.max(0, parseInt(qs.get('rounds'), 10) || 0); // 테스트용 ?rounds=1 (있으면 로비 설정보다 우선)
+  const WIN_CHOICES = [1, 2, 3, 5, 7, 10];
   const DEBUG = qs.has('debug');
   const isTouch = window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -39,7 +40,7 @@
   // 설정 (브라우저에 저장)
   // =====================================================================
   const SETTINGS_VER = 2; // 올리면 모든 사람의 난이도/보조 설정이 새 기본값으로 한 번 초기화됨
-  const defaults = { v: SETTINGS_VER, sens: 1, fov: 80, auto: isTouch, assist: isTouch ? 2 : 0, mode: 2, diff: isTouch ? 'rookie' : 'easy', map: 'warehouse', loadout: { primary: 'ar', secondary: 'pistol', melee: 'knife', utility: 'frag' } };
+  const defaults = { v: SETTINGS_VER, sens: 1, fov: 80, auto: isTouch, assist: isTouch ? 2 : 0, mode: 2, diff: isTouch ? 'rookie' : 'easy', map: 'warehouse', wins: 5, randomGear: false, loadout: { primary: 'ar', secondary: 'pistol', melee: 'knife', utility: 'frag' } };
   let settings = Object.assign({}, defaults);
   try {
     const saved = JSON.parse(safeGet('rival_settings') || '{}');
@@ -53,6 +54,9 @@
   settings.fov = num(settings.fov, 60, 100, 80);
   settings.mode = [1, 2, 3, 4].includes(settings.mode) ? settings.mode : 2;
   settings.assist = [0, 1, 2].includes(settings.assist) ? settings.assist : defaults.assist;
+  settings.wins = WIN_CHOICES.includes(settings.wins) ? settings.wins : 5;
+  settings.randomGear = settings.randomGear === true;
+  const winRounds = () => URL_ROUNDS || settings.wins;
   settings.auto = typeof settings.auto === 'boolean' ? settings.auto : defaults.auto;
   if (!['rookie', 'easy', 'normal', 'hard', 'insane'].includes(settings.diff)) settings.diff = defaults.diff;
   if (typeof settings.map !== 'string' || !RivalMap.has(settings.map)) settings.map = 'warehouse';
@@ -148,6 +152,10 @@
       $('ai-mem').textContent = cap ? '🧠 이 난이도의 AI는 내 습관을 학습해요 (기억한 경기 ' + mem.matches + '판' + (mem.shotDist ? ' · 내 교전 거리 약 ' + mem.shotDist + 'm' : '') + ')' : '이 난이도의 AI는 학습하지 않아요 (보통 이상에서 학습)';
     };
     $('set-diff').onchange = (e) => { settings.diff = e.target.value; saveSettings(); showMem(); };
+    $('set-wins').value = String(settings.wins);
+    $('set-wins').onchange = (e) => { const v = +e.target.value; settings.wins = WIN_CHOICES.includes(v) ? v : 5; saveSettings(); };
+    $('set-rand').checked = settings.randomGear;
+    $('set-rand').onchange = (e) => { settings.randomGear = e.target.checked; saveSettings(); };
     $('set-mem').onclick = () => { RivalBots.resetMemory(); showMem(); };
     showMem();
     $('set-sens').oninput = (e) => { settings.sens = +e.target.value; $('v-sens').textContent = settings.sens; saveSettings(); };
@@ -372,7 +380,7 @@
       } else if (r.wall) spark(px, py, pz, 0xffc060);
       tracer(mz[0], mz[1], mz[2], px, py, pz);
     }
-    if (isMe) { rangeStats.shots++; if (anyHit) rangeStats.hits++; }
+    if (isMe) { rangeStats.shots++; if (anyHit) rangeStats.hits++; if (match.mode === 'match') { match.shots++; if (anyHit) match.hits++; } }
     else if (shooter.isBot && shooter.team === 'B') { botStats.shots++; if (hitMe) botStats.hitsOnMe++; }
   }
 
@@ -383,7 +391,7 @@
     if (t.isBot) { t.flinchT = 0.5; if (attacker && attacker !== t) t.hurtFrom = attacker; } // 맞으면 움찔하고 쏜 쪽을 확인
     if (t === P && attacker && attacker !== P) showHitDir(attacker);
     if (t === P) { dmgT = Math.min(0.8, dmgT + 0.4); if (now - lastHurt > 0.12) { lastHurt = now; Sfx.hurt(); } } else t.flash = 0.12;
-    if (attacker === P && t !== P) { hitmark(head); Sfx.hit(head); if (head) rangeStats.heads++; rangeStats.last = amount + (head ? ' (헤드샷)' : ''); }
+    if (attacker === P && t !== P) { hitmark(head); Sfx.hit(head); if (head) { rangeStats.heads++; if (match.mode === 'match') match.heads++; } rangeStats.last = amount + (head ? ' (헤드샷)' : ''); }
     if (t.hp <= 0) kill(t, attacker, head, w);
   }
 
@@ -446,20 +454,20 @@
   // =====================================================================
   // 매치 / 라운드
   // =====================================================================
-  const match = { mode: 'match', phase: 'idle', round: 0, score: { A: 0, B: 0 }, timer: 0, phaseT: 0, teamSize: 2, diff: 'normal', kills: 0, deaths: 0, lastCount: 99 };
+  const match = { shots: 0, hits: 0, heads: 0, wins: 5, mode: 'match', phase: 'idle', round: 0, score: { A: 0, B: 0 }, timer: 0, phaseT: 0, teamSize: 2, diff: 'normal', kills: 0, deaths: 0, lastCount: 99 };
 
   function startMatch() {
     match.mode = 'match';
     P.name = myNick || '나';
-    match.teamSize = settings.mode; match.diff = settings.diff;
-    match.round = 0; match.score.A = match.score.B = 0; match.kills = match.deaths = 0; match.phase = 'ready';
+    match.teamSize = settings.mode; match.diff = settings.diff; match.wins = winRounds(); // 매치 도중에는 선승 수가 바뀌지 않게 시작할 때 고정
+    match.round = 0; match.score.A = match.score.B = 0; match.kills = match.deaths = 0; match.shots = match.hits = match.heads = 0; match.phase = 'ready';
     P.kills = P.deaths = 0;
     $('result').classList.add('hidden'); sbOpen = false;
     $('feed').innerHTML = '';
     setBanner('');
     applyCrosshair();
     botsApi.beginMatch();
-    showOverlay('준비 완료', (world.name + ' · ' + match.teamSize + ' vs ' + match.teamSize + ' · ' + botsApi.DIFFS[match.diff].name + ' · ' + WIN_ROUNDS + '선승'), '시작');
+    showOverlay('준비 완료', (world.name + ' · ' + match.teamSize + ' vs ' + match.teamSize + ' · ' + botsApi.DIFFS[match.diff].name + ' · ' + match.wins + '선승'), '시작');
   }
 
 
@@ -523,8 +531,15 @@
     cur = idx; lastCur = 0; setViewmodel(guns[cur].id); renderSlots();
   }
 
+  // 랜덤 무기 모드: 매치에서 라운드마다 주무기/보조/근접/유틸리티를 무작위로 받음 (내가 고른 로드아웃은 그대로 저장돼 있음)
+  const pickRandom = (slot) => { const ids = Object.keys(W.list).filter((k) => W.list[k].slot === slot); return ids[Math.floor(Math.random() * ids.length)]; };
   function setupGuns() {
-    guns = [W.create(settings.loadout.primary), W.create(settings.loadout.secondary), W.create(settings.loadout.melee), W.create(settings.loadout.utility)];
+    let lo = settings.loadout;
+    if (settings.randomGear && match.mode === 'match') {
+      lo = { primary: pickRandom('primary'), secondary: pickRandom('secondary'), melee: pickRandom('melee'), utility: pickRandom('utility') };
+      feed('🎲 이번 라운드 무기: ' + [lo.primary, lo.secondary, lo.melee, lo.utility].map((id) => W.list[id].name).join(' · '), true);
+    }
+    guns = [W.create(lo.primary), W.create(lo.secondary), W.create(lo.melee), W.create(lo.utility)];
     cur = 0; lastCur = 0; switchT = 0.3; adsT = 0; vmRaise = 1;
     inp.adsToggle = false; $('btn-ads').classList.remove('on');
     setViewmodel(guns[0].id);
@@ -584,7 +599,7 @@
     } else if (match.phase === 'between') {
       match.phaseT -= dt;
       if (match.phaseT <= 0) {
-        if (match.score.A >= WIN_ROUNDS || match.score.B >= WIN_ROUNDS) finishMatch();
+        if (match.score.A >= match.wins || match.score.B >= match.wins) finishMatch();
         else startRound();
       }
     }
@@ -597,8 +612,8 @@
     setBanner('');
     if (document.pointerLockElement) document.exitPointerLock();
     $('res-title').textContent = won ? '🏆 승리!' : '패배';
-    $('res-score').textContent = '라운드 ' + match.score.A + ' : ' + match.score.B;
-    const gain = RivalShop.reward({ won, kills: match.kills, roundsWon: match.score.A, diff: match.diff });
+    $('res-score').textContent = '라운드 ' + match.score.A + ' : ' + match.score.B + (match.shots ? ' · 명중률 ' + Math.round(100 * match.hits / match.shots) + '% · 헤드샷 ' + match.heads : '');
+    const gain = RivalShop.reward({ won, kills: match.kills, roundsWon: match.score.A, diff: match.diff, wins: settings.wins });
     $('res-coins').textContent = '💰 +' + gain + ' 코인 (보유 ' + RivalShop.coins() + ')';
     $('res-stats').textContent = '이번 매치: ' + match.kills + '킬 ' + match.deaths + '데스 · 기록을 저장하는 중…';
     $('result').classList.remove('hidden');
@@ -970,7 +985,7 @@
     setText('sc-me', String(match.score.A)); setText('sc-foe', String(match.score.B));
     const t = Math.max(0, Math.ceil(match.timer));
     setText('sc-timer', match.phase === 'live' || match.phase === 'between' ? Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0') : '--');
-    setText('sc-round', '라운드 ' + Math.max(1, match.round) + ' · ' + WIN_ROUNDS + '선승 · 생존 ' + aliveCount('A') + ' vs ' + aliveCount('B'));
+    setText('sc-round', '라운드 ' + Math.max(1, match.round) + ' · ' + match.wins + '선승 · 생존 ' + aliveCount('A') + ' vs ' + aliveCount('B'));
     // 맞춤 표시 / 피격 화면 / 배너 시간
     if (hmT > 0) { hmT -= dt; if (hmT <= 0) $('hitmark').className = ''; }
     dmgT = Math.max(0, dmgT - dt * 1.4); $('dmgflash').style.opacity = dmgT.toFixed(2);
