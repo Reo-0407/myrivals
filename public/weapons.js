@@ -16,6 +16,7 @@
     // ---- 보조무기 ----
     pistol:  { name: '권총', slot: 'secondary', dmg: 18, head: 2, rpm: 360, mag: 15, reload: 1.5, spread: [1.3, 0.35], recoil: 0.6, range: [25, 55], fov: 64, move: 1.0, sfx: 'pistol', desc: '한 번 누를 때 한 발' },
     revolver:{ name: '리볼버', slot: 'secondary', dmg: 55, head: 2, rpm: 120, mag: 6, reload: 2.5, spread: [1.0, 0.25], recoil: 2.0, range: [40, 80], fov: 56, move: 1.0, sfx: 'revolver', desc: '느리지만 두 방이면 쓰러져요' },
+    bow:     { name: '활', slot: 'secondary', dmg: 70, head: 2, rpm: 48, mag: 1, reload: 1.0, spread: [1.6, 0.05], recoil: 0.9, range: [70, 130], fov: 48, move: 1.0, sfx: 'bow', desc: '한 발씩 시위를 당겨요. 정조준하면 정확해요. 머리는 즉사' },
     // ---- 근접무기 ----
     knife:   { name: '칼', slot: 'melee', melee: true, dmg: 40, head: 1, rpm: 130, mag: 0, reload: 0, range: [2.3, 2.3], move: 1.15, auto: true, sfx: 'swing', desc: '빠르고 이동이 가장 빨라요' },
     axe:     { name: '도끼', slot: 'melee', melee: true, dmg: 75, head: 1, rpm: 55, mag: 0, reload: 0, range: [2.7, 2.7], move: 1.0, sfx: 'swing', desc: '느리지만 두 번이면 끝' },

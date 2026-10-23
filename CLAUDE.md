@@ -27,6 +27,7 @@
 - 봇 탐색: 22m 안의 적은 발소리로 위치를 알아채 `planRoute`가 그쪽으로 직행(매복 봇은 14m), 목적지에 도착하면 `spinT`로 한 바퀴 둘러봄.
 - 밸런스(`main.js` `shoot/explode`): 봇이 나를 한 방에 못 죽이게 총알 1발 최대 60(`BOT_HIT_CAP`), 샷건 1회 합계 최대 55(`BOT_VOLLEY_CAP`), 수류탄 최대 80. 플레이어→봇 데미지는 그대로. 어려움/지옥은 조준 오차·빗나감 확률을 높여 명중률을 낮춤(`DIFFS`).
 - 매치 설정: 몇 선승(`settings.wins` 1/2/3/5/7/10, 시작 때 `match.wins`로 고정, `?rounds=N`이 있으면 우선), 무기 랜덤(`settings.randomGear`, 라운드마다 `setupGuns`가 무작위 4슬롯). 코인은 선승 수에 따라 배율(`WINS_MULT`). 결과 화면에 명중률/헤드샷 표시.
+- 활(`bow`, 보조무기): 한 발 장전식 히트스캔(화살 궤적은 트레이서). 봇은 안 씀. 모델 `models.js`, 소리 `audio.js` GUN.bow.
 - 보안: 저장소/목록 객체는 `Object.create(null)`("__proto__" 오염 방지), 서버는 id 형식 검증. 설정/지갑은 불러올 때 값 검사.
 
 ## 규칙
