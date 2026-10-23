@@ -16,8 +16,8 @@
     rookie: { name: '입문',   react: 1.5,  aim: 4.5, moveAim: 1.0,  head: 0.0,  turn: 1.8,  strafe: 0.15, dmg: 0.5,  fov: 0.95, hear: 12, burstOn: [0.25, 0.5], burstOff: [0.9, 1.7], pool: ['ar', 'smg'],                    wob: 2.2,  pMiss: 0.6,  miss: [4, 9],     rec: 1.0 },
     easy:   { name: '쉬움',   react: 1.0,  aim: 3.6, moveAim: 0.7,  head: 0.02, turn: 2.4,  strafe: 0.35, dmg: 0.65, fov: 1.0,  hear: 18, burstOn: [0.3, 0.7],  burstOff: [0.6, 1.3], pool: ['ar', 'smg', 'burst'],           wob: 1.8,  pMiss: 0.5,  miss: [3.5, 8],   rec: 0.9 },
     normal: { name: '보통',   react: 0.7,  aim: 3.0, moveAim: 0.55, head: 0.07, turn: 4.2,  strafe: 0.7,  dmg: 0.7,  fov: 1.1,  hear: 26, burstOn: [0.5, 1.0],  burstOff: [0.5, 1.1], pool: ['ar', 'smg', 'burst', 'shotgun'], wob: 1.3,  pMiss: 0.38, miss: [3, 7],     rec: 0.75 },
-    hard:   { name: '어려움', react: 0.35, aim: 1.4, moveAim: 0.25, head: 0.18, turn: 7.0,  strafe: 1.0,  dmg: 1.0,  fov: 1.15, hear: 32, burstOn: [0.8, 1.6],  burstOff: [0.2, 0.6], pool: ALL,                             wob: 0.8,  pMiss: 0.26, miss: [2.5, 6],   rec: 0.55 },
-    insane: { name: '지옥',   react: 0.16, aim: 0.4, moveAim: 0.1,  head: 0.4,  turn: 14.0, strafe: 1.25, dmg: 1.1,  fov: 1.15, hear: 40, burstOn: [1.2, 2.4],  burstOff: [0.1, 0.3], pool: ALL,                             wob: 0.35, pMiss: 0.1, miss: [2, 4.5],   rec: 0.35 },
+    hard:   { name: '어려움', react: 0.35, aim: 1.8, moveAim: 0.25, head: 0.18, turn: 7.0,  strafe: 1.0,  dmg: 1.0,  fov: 1.15, hear: 32, burstOn: [0.8, 1.6],  burstOff: [0.2, 0.6], pool: ALL,                             wob: 0.9,  pMiss: 0.3, miss: [2.5, 6],   rec: 0.55 },
+    insane: { name: '지옥',   react: 0.16, aim: 0.7, moveAim: 0.15,  head: 0.4,  turn: 14.0, strafe: 1.25, dmg: 1.1,  fov: 1.15, hear: 40, burstOn: [1.2, 2.4],  burstOff: [0.1, 0.3], pool: ALL,                             wob: 0.5,  pMiss: 0.18, miss: [2, 4.5],   rec: 0.35 },
   };
   Object.keys(DIFFS).forEach((k) => { DIFFS[k].key = k; });
   const NAMES = ['Viper', 'Ghost', 'Nova', 'Blaze', 'Echo', 'Rogue', 'Hawk', 'Frost', 'Zed', 'Pixel', 'Kuma', 'Rex', 'Luna', 'Orca', 'Jinx', 'Volt'];

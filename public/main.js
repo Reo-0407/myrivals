@@ -344,6 +344,7 @@
   }
 
   // 한 번 발사 (플레이어/봇 공용). 펠릿(샷건)은 여러 알이 각자 날아감.
+  const BOT_HIT_CAP = 60, BOT_VOLLEY_CAP = 55, BOT_NADE_CAP = 80; // 봇의 공격이 나를 한 방에 쓰러뜨리지 않게 하는 상한 (아래 shoot/explode)
   function shoot(shooter, ox, oy, oz, dx, dy, dz, w, spread) {
     shooter.firedT = 0.8;
     if (shooter.isBot) shooter.muzzleT = 0.05;
@@ -352,7 +353,7 @@
     Sfx.shot(w.sfx, isMe ? 1 : Math.max(0, 1 - dP / 60) * 0.7);
     const mz = muzzlePos(shooter, dx, dy, dz);
     const n = w.pellets || 1;
-    let anyHit = false, hitMe = false;
+    let anyHit = false, hitMe = false, volleyOnMe = 0;
     for (let i = 0; i < n; i++) {
       const d = spreadDir(dx, dy, dz, spread);
       const r = castRay(shooter, ox, oy, oz, d[0], d[1], d[2], 300);
@@ -361,6 +362,10 @@
         let dmg = w.dmg * W.falloff(w, r.t);
         if (r.head) dmg *= w.head; else if (py < r.e.y - (r.e.eye || EYE) + 0.7) dmg *= 0.85; // 다리는 약간 약함
         if (shooter.isBot && shooter.diff) dmg *= shooter.diff.dmg; // 낮은 난이도 봇은 데미지가 약함
+        if (shooter.isBot && r.e === P) { // 봇이 나를 한 방에 죽이지 못하게: 총알 한 발 최대 60, 샷건 한 번(알갱이 합계) 최대 55
+          dmg = Math.min(dmg, BOT_HIT_CAP);
+          if (n > 1) { dmg = Math.min(dmg, Math.max(0, BOT_VOLLEY_CAP - volleyOnMe)); volleyOnMe += dmg; if (dmg < 1) { spark(px, py, pz, 0xff3030); anyHit = true; hitMe = true; tracer(mz[0], mz[1], mz[2], px, py, pz); continue; } }
+        }
         spark(px, py, pz, 0xff3030); anyHit = true; if (r.e === P) hitMe = true;
         if (isMe && r.e.isBot && !r.e.dummy && match.mode === 'match') botsApi.observeShot(r.t);
         damage(r.e, dmg, r.head, shooter, w);
@@ -850,7 +855,7 @@
       const dx = e.x - n.x, dy = cy - (n.y + 0.2), dz = e.z - n.z, d = Math.hypot(dx, dy, dz);
       if (d > w.radius) return;
       if (d > 0.4 && phys.rayBoxes(n.x, n.y + 0.2, n.z, dx / d, dy / d, dz / d, d) < d - 0.3) return; // 벽이 막아줌
-      if (!flashing) { damage(e, w.dmg * (1 - d / w.radius), false, n.owner, w); return; }
+      if (!flashing) { let nd = w.dmg * (1 - d / w.radius); if (e === P && n.owner.isBot) nd = Math.min(nd, BOT_NADE_CAP); damage(e, nd, false, n.owner, w); return; }
       const toB = [-dx / (d || 1), -dy / (d || 1), -dz / (d || 1)];
       if (e === P) { // 폭발 쪽을 쳐다보고 있을수록 오래 멂
         const v = camDir(), f = (v[0] * toB[0] + v[1] * toB[1] + v[2] * toB[2] + 1) / 2;

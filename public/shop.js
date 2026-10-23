@@ -12,6 +12,16 @@
     { kind: 'skin', id: 'ruby',    name: '루비',   price: 200, main: 0xe0243d, sub: 0x80101f },
     { kind: 'skin', id: 'neon',    name: '네온 (빛남)', price: 300, main: 0x39ff88, sub: 0x12a85a, glow: true },
     { kind: 'skin', id: 'gold',    name: '황금',   price: 450, main: 0xffd24a, sub: 0xc99a1e },
+    { kind: 'skin', id: 'snow',    name: '눈꽃',   price: 120, main: 0xf2f6fb, sub: 0xb8c4d4 },
+    { kind: 'skin', id: 'mint',    name: '민트',   price: 150, main: 0x6fe0c0, sub: 0x2f9c84 },
+    { kind: 'skin', id: 'carbon',  name: '카본',   price: 180, main: 0x2b2f36, sub: 0x14161a },
+    { kind: 'skin', id: 'ocean',   name: '바다',   price: 200, main: 0x1f6fb8, sub: 0x0d3a66 },
+    { kind: 'skin', id: 'sunset',  name: '노을',   price: 250, main: 0xff8a4d, sub: 0xb83a6a },
+    { kind: 'skin', id: 'toxic',   name: '독 (빛남)', price: 330, main: 0xa6ff2e, sub: 0x4f9a10, glow: true },
+    { kind: 'skin', id: 'lava',    name: '용암 (빛남)', price: 380, main: 0xff5a1f, sub: 0xa8200a, glow: true },
+    { kind: 'skin', id: 'ghost',   name: '유령 (빛남)', price: 420, main: 0x9ff3ff, sub: 0x3a9fc0, glow: true },
+    { kind: 'skin', id: 'galaxy',  name: '은하 (빛남)', price: 520, main: 0x8a4dff, sub: 0x2a1a7a, glow: true },
+    { kind: 'skin', id: 'royal',   name: '로열',   price: 600, main: 0x6a2fb8, sub: 0xe0b83a },
     { kind: 'skin', id: 'rainbow', name: '무지개 (색이 변함)', price: 800, main: 0xff0000, sub: 0x00ff00, rainbow: true },
   ];
   const XHS = [
@@ -21,6 +31,9 @@
     { kind: 'xh', id: 'xh_yellow', name: '노랑',   price: 40, color: '#ffe44d' },
     { kind: 'xh', id: 'xh_pink',   name: '분홍',   price: 60, color: '#ff7ad1' },
     { kind: 'xh', id: 'xh_red',    name: '빨강',   price: 60, color: '#ff4d4d' },
+    { kind: 'xh', id: 'xh_orange', name: '주황',   price: 60, color: '#ff9a3d' },
+    { kind: 'xh', id: 'xh_lime',   name: '연두',   price: 60, color: '#b6ff3d' },
+    { kind: 'xh', id: 'xh_purple', name: '보라',   price: 80, color: '#b06bff' },
   ];
   const byId = Object.create(null); // 프로토타입 없는 객체: 저장값에 "__proto__" 같은 이름이 있어도 물건으로 착각하지 않음
   SKINS.concat(XHS).forEach((i) => { byId[i.id] = i; });
