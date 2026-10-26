@@ -8,11 +8,11 @@
   const list = {
     // ---- 주무기 ----
     ar:      { name: '돌격소총', slot: 'primary', dmg: 20, head: 2, rpm: 600, mag: 30, reload: 2.2, spread: [1.1, 0.2], recoil: 0.55, range: [35, 80], fov: 58, move: 0.95, auto: true, sfx: 'rifle', desc: '만능형 연사 소총' },
-    burst:   { name: '점사소총', slot: 'primary', dmg: 22, head: 2, rpm: 300, mag: 24, reload: 2.0, spread: [0.9, 0.12], recoil: 0.7, range: [45, 90], fov: 52, move: 0.95, burst: 3, burstGap: 0.07, cooldown: 0.34, sfx: 'rifle', desc: '3발씩 끊어 쏘는 중거리 소총' },
-    smg:     { name: '기관단총', slot: 'primary', dmg: 15, head: 1.8, rpm: 900, mag: 25, reload: 1.8, spread: [1.7, 0.7], recoil: 0.32, range: [18, 45], fov: 68, move: 1.05, auto: true, sfx: 'smg', desc: '근거리 최강, 이동이 빨라요' },
+    burst:   { name: '점사소총', slot: 'primary', dmg: 24, head: 2, rpm: 300, mag: 24, reload: 2.0, spread: [0.9, 0.12], recoil: 0.7, range: [45, 90], fov: 52, move: 0.95, burst: 3, burstGap: 0.07, cooldown: 0.34, sfx: 'rifle', desc: '3발씩 끊어 쏘는 중거리 소총' },
+    smg:     { name: '기관단총', slot: 'primary', dmg: 14, head: 1.8, rpm: 900, mag: 25, reload: 1.8, spread: [1.7, 0.7], recoil: 0.32, range: [18, 45], fov: 68, move: 1.05, auto: true, sfx: 'smg', desc: '근거리 최강, 이동이 빨라요' },
     shotgun: { name: '샷건', slot: 'primary', dmg: 10, head: 1.5, rpm: 70, mag: 6, reload: 0.5, startup: 0.45, shell: 0.5, pellets: 8, spread: [4.2, 3.2], recoil: 2.4, range: [10, 24], fov: 66, move: 0.95, sfx: 'shotgun', desc: '한 발씩 장전(0.5초), 근거리 한방' },
     sniper:  { name: '저격총', slot: 'primary', dmg: 90, head: 2, rpm: 42, mag: 5, reload: 2.8, spread: [7, 0.02], recoil: 3.2, range: [200, 300], fov: 20, move: 0.85, scope: true, sfx: 'sniper', desc: '헤드샷 즉사, 조준 필수' },
-    lmg:     { name: '기관총', slot: 'primary', dmg: 18, head: 1.8, rpm: 750, mag: 100, reload: 4.5, spread: [1.9, 0.7], recoil: 0.5, range: [30, 75], fov: 62, move: 0.78, auto: true, sfx: 'lmg', desc: '탄이 많지만 재장전이 길고 느려요' },
+    lmg:     { name: '기관총', slot: 'primary', dmg: 14, head: 1.7, rpm: 700, mag: 100, reload: 5.2, spread: [2.5, 1.2], recoil: 0.75, range: [26, 65], fov: 62, move: 0.72, auto: true, sfx: 'lmg', desc: '탄은 100발이지만 약하고 퍼지고 느려요. 재장전도 길어요' },
     // ---- 보조무기 ----
     pistol:  { name: '권총', slot: 'secondary', dmg: 18, head: 2, rpm: 360, mag: 15, reload: 1.5, spread: [1.3, 0.35], recoil: 0.6, range: [25, 55], fov: 64, move: 1.0, sfx: 'pistol', desc: '한 번 누를 때 한 발' },
     revolver:{ name: '리볼버', slot: 'secondary', dmg: 55, head: 2, rpm: 120, mag: 6, reload: 2.5, spread: [1.0, 0.25], recoil: 2.0, range: [40, 80], fov: 56, move: 1.0, sfx: 'revolver', desc: '느리지만 두 방이면 쓰러져요' },

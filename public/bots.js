@@ -17,7 +17,7 @@
     easy:   { name: '쉬움',   react: 1.0,  aim: 3.6, moveAim: 0.7,  head: 0.02, turn: 2.4,  strafe: 0.35, dmg: 0.65, fov: 1.0,  hear: 18, burstOn: [0.3, 0.7],  burstOff: [0.6, 1.3], pool: ['ar', 'smg', 'burst'],           wob: 1.8,  pMiss: 0.5,  miss: [3.5, 8],   rec: 0.9 },
     normal: { name: '보통',   react: 0.7,  aim: 3.0, moveAim: 0.55, head: 0.07, turn: 4.2,  strafe: 0.7,  dmg: 0.7,  fov: 1.1,  hear: 26, burstOn: [0.5, 1.0],  burstOff: [0.5, 1.1], pool: ['ar', 'smg', 'burst', 'shotgun'], wob: 1.3,  pMiss: 0.38, miss: [3, 7],     rec: 0.75 },
     hard:   { name: '어려움', react: 0.35, aim: 1.8, moveAim: 0.25, head: 0.18, turn: 7.0,  strafe: 1.0,  dmg: 1.0,  fov: 1.15, hear: 32, burstOn: [0.8, 1.6],  burstOff: [0.2, 0.6], pool: ALL,                             wob: 0.9,  pMiss: 0.3, miss: [2.5, 6],   rec: 0.55 },
-    insane: { name: '지옥',   react: 0.16, aim: 0.7, moveAim: 0.15,  head: 0.4,  turn: 14.0, strafe: 1.25, dmg: 1.1,  fov: 1.15, hear: 40, burstOn: [1.2, 2.4],  burstOff: [0.1, 0.3], pool: ALL,                             wob: 0.5,  pMiss: 0.18, miss: [2, 4.5],   rec: 0.35 },
+    insane: { name: '지옥',   react: 0.22, aim: 1.3, moveAim: 0.32,  head: 0.4,  turn: 14.0, strafe: 1.25, dmg: 1.1,  fov: 1.15, hear: 40, burstOn: [1.2, 2.4],  burstOff: [0.1, 0.3], pool: ALL,                             wob: 0.8,  pMiss: 0.38, miss: [2.5, 6],   rec: 0.5 },
   };
   Object.keys(DIFFS).forEach((k) => { DIFFS[k].key = k; });
   const NAMES = ['Viper', 'Ghost', 'Nova', 'Blaze', 'Echo', 'Rogue', 'Hawk', 'Frost', 'Zed', 'Pixel', 'Kuma', 'Rex', 'Luna', 'Orca', 'Jinx', 'Volt'];
@@ -38,6 +38,9 @@
 
   const angDiff = (a, b) => { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const feet = (e) => e.y - (e.eye || 1.7); // 눈 높이 → 발 높이
+  // 적 위치 근처로 약간 흐트러뜨린 목적지. 위층(발 높이 0.5m 이상)은 흐트러뜨리면 허공/난간이 될 수 있어 정확히 그 자리로
+  const jit = (e, r) => { const y = feet(e); return y > 0.5 ? { x: e.x, z: e.z, y } : { x: e.x + rnd(-r, r), z: e.z + rnd(-r, r), y }; };
   const rnd = (a, b) => a + Math.random() * (b - a);
   const DEG = Math.PI / 180;
   function hash(i, s) { let h = (Math.imul(i, 374761393) + Math.imul(s, 668265263)) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
@@ -87,39 +90,72 @@
     const bots = [];
     const mapId = typeof G.mapId === 'function' ? G.mapId() : 'x';
 
-    // ---------------- 길찾기용 격자 ----------------
-    const HALF = 32, N = 64;
-    const obs = G.boxes.filter((b) => b.minY < 1.8 && b.maxY > 0.3); // 지상에서 걸어서 못 지나가는 것들
-    const walk = new Uint8Array(N * N);
+    // ---------------- 길찾기용 격자 (층 구분) ----------------
+    // 한 칸(1m)마다 "설 수 있는 높이"가 여러 개일 수 있음(바닥, 계단 위, 지붕, 컨테이너 위 ...). 길찾기는 (칸, 높이) 쌍을 점으로 삼음.
+    // 이웃 칸으로는 0.55m 이하 턱은 걸어서 오르고(계단), 그보다 낮은 쪽(최대 4m)으로는 뛰어내림.
+    const HALF = 32, N = 64, K = 5, STEP = 0.55, NAVR = 0.5; // NAVR: 길 칸이 비어 있어야 하는 반경(몸 반지름 0.4보다 조금 넉넉히)
+    const solid = G.boxes;
+    const obs = solid.filter((b) => b.minY < 1.8 && b.maxY > 0.3); // 지상에서 걸어서 못 지나가는 것들 (직선 이동 검사용)
+    const nodeH = new Float32Array(N * N * K).fill(NaN); // 칸마다 설 수 있는 높이 (낮은 순)
+    const nodeN = new Uint8Array(N * N);
+    const walk = new Uint8Array(N * N);                  // 바닥(높이 0)에서 걸을 수 있는 칸 (2D 호환용)
     for (let iz = 0; iz < N; iz++) {
       for (let ix = 0; ix < N; ix++) {
-        const cx = -HALF + ix + 0.5, cz = -HALF + iz + 0.5;
-        let ok = 1;
-        for (let i = 0; i < obs.length; i++) {
-          const b = obs[i];
-          if (cx + 0.55 > b.minX && cx - 0.55 < b.maxX && cz + 0.55 > b.minZ && cz - 0.55 < b.maxZ) { ok = 0; break; }
+        const cx = -HALF + ix + 0.5, cz = -HALF + iz + 0.5, ci = iz * N + ix;
+        const cand = [0];
+        for (let i = 0; i < solid.length; i++) {
+          const b = solid[i];
+          if (b.maxY > 0.05 && b.maxY < 9 && cx + 0.4 > b.minX && cx - 0.4 < b.maxX && cz + 0.4 > b.minZ && cz - 0.4 < b.maxZ) cand.push(b.maxY); // 몸(반지름 0.4)이 닿는 상자의 윗면. 계단 옆에 서면 몸이 높은 쪽 단 위로 올라서기 때문
         }
-        walk[iz * N + ix] = ok;
+        cand.sort((a, b) => a - b);
+        const hs = [];
+        for (const h of cand) if (!hs.length || h - hs[hs.length - 1] > 0.06) hs.push(h);
+        for (const h of hs) {
+          if (nodeN[ci] >= K) break;
+          let ok = true;
+          for (let i = 0; i < solid.length; i++) { // 몸(반지름 0.55)이 들어갈 공간이 비어 있는가
+            const b = solid[i];
+            if (b.minY >= h + 1.9) continue; // 머리 위 천장은 상관없음
+            if (b.maxY > h + 0.01 && cx + 0.4 > b.minX && cx - 0.4 < b.maxX && cz + 0.4 > b.minZ && cz - 0.4 < b.maxZ) { ok = false; break; } // 몸이 이 높이에 서면 다른 상자와 겹침 (실제 이동 규칙과 같음)
+            if (b.maxY > h + 0.5 && cx + NAVR > b.minX && cx - NAVR < b.maxX && cz + NAVR > b.minZ && cz - NAVR < b.maxZ) { ok = false; break; } // 벽 옆은 조금 더 여유
+          }
+          if (ok) { nodeH[ci * K + nodeN[ci]] = h; nodeN[ci]++; }
+        }
+        if (nodeN[ci] && nodeH[ci * K] < 0.06) walk[ci] = 1;
       }
     }
     const cellOf = (x, z) => [clamp(Math.floor(x + HALF), 0, N - 1), clamp(Math.floor(z + HALF), 0, N - 1)];
     const cellCenter = (i) => [-HALF + (i % N) + 0.5, -HALF + ((i / N) | 0) + 0.5];
-    function nearestWalkable(x, z) {
+    // 높이 y 에 가장 가까운 점(칸*K+층). 가까운 칸부터 찾되 높이가 0.8m 안으로 맞는 점을 우선.
+    function nearestNode(x, z, y) {
       const [cx, cz] = cellOf(x, z);
+      let fb = -1, fbs = 1e9;
       for (let r = 0; r <= 8; r++) {
+        let best = -1, bd = 1e9;
         for (let dz = -r; dz <= r; dz++) {
           for (let dx = -r; dx <= r; dx++) {
             if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
             const ix = cx + dx, iz = cz + dz;
             if (ix < 0 || iz < 0 || ix >= N || iz >= N) continue;
-            if (walk[iz * N + ix]) return iz * N + ix;
+            const ci = iz * N + ix;
+            for (let k = 0; k < nodeN[ci]; k++) {
+              const dh = Math.abs(nodeH[ci * K + k] - y);
+              if (dh <= 0.8 && dh < bd) { bd = dh; best = ci * K + k; }
+              const sc = r * 3 + dh;
+              if (sc < fbs) { fbs = sc; fb = ci * K + k; }
+            }
           }
         }
+        if (best >= 0) return best;
       }
-      return -1;
+      return fb;
+    }
+    function nearestWalkable(x, z) { // 바닥 칸(2D)
+      const n = nearestNode(x, z, 0);
+      return n < 0 ? -1 : (n / K) | 0;
     }
 
-    // 선분(a→b)이 장애물에 걸리는지. 장애물을 0.45m 부풀려서 검사(몸 두께 고려)
+    // 선분(a→b)이 장애물에 걸리는지. 장애물을 0.45m 부풀려서 검사(몸 두께 고려). 바닥 높이에서만 씀
     function segBlocked(ax, az, bx, bz) {
       const dx = bx - ax, dz = bz - az;
       for (let i = 0; i < obs.length; i++) {
@@ -145,23 +181,39 @@
       return false;
     }
 
-    const gScore = new Float32Array(N * N), parent = new Int32Array(N * N), closed = new Uint8Array(N * N);
+    const NN = N * N * K;
+    // 오르막 이웃(계단 한 칸 등)이 정말 걸어서 올라가지는지 실제 이동 규칙(phys.tryMove)으로 시험해 봄. 옆에서 비스듬히 계단에 붙으면 두 단이 한꺼번에 닿아 막히는 경우가 있음.
+    const climbCache = new Map();
+    function climbOk(a, bn) {
+      const key = a * NN + bn;
+      let v = climbCache.get(key);
+      if (v !== undefined) return v;
+      const ac = (a / K) | 0, bc = (bn / K) | 0, ax = cellCenter(ac), bx = cellCenter(bc);
+      const e = { x: ax[0], z: ax[1], y: nodeH[a] + 1.7, vy: 0, onGround: true };
+      const dx = bx[0] - ax[0], dz = bx[1] - ax[1], steps = 10;
+      for (let i = 1; i <= steps; i++) phys.tryMove(e, ax[0] + dx * i / steps, ax[1] + dz * i / steps);
+      v = Math.hypot(e.x - bx[0], e.z - bx[1]) < 0.15 && Math.abs(e.y - 1.7 - nodeH[bn]) < 0.2;
+      climbCache.set(key, v);
+      return v;
+    }
+    const gScore = new Float32Array(NN), parent = new Int32Array(NN), closed = new Uint8Array(NN);
     const DIRS = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.414], [1, -1, 1.414], [-1, 1, 1.414], [-1, -1, 1.414]];
 
     // 팀별 "지나간 길" 기록: 많이 지나간 칸은 다음 길찾기에서 비싸게 쳐서 다른 길로 돌아가게 함 (라운드가 지나면 절반씩 옅어짐)
     const traffic = { A: new Float32Array(N * N), B: new Float32Array(N * N) };
     const teamIntel = { A: null, B: null }; // 팀이 마지막으로 적을 본 곳 (무전)
 
-    // opt: { seed, noise, team } — 봇마다 다른 길 비용을 줘서 같은 곳에서 출발해도 다른 길을 고르게 함
+    // opt: { seed, noise, team, sy(내 발 높이), ty(목적지 발 높이) } — 봇마다 다른 길 비용을 줘서 같은 곳에서 출발해도 다른 길을 고르게 함
+    // 결과: [[x, z, 높이], ...]
     function findPath(sx, sz, tx, tz, opt) {
-      const s = nearestWalkable(sx, sz), g = nearestWalkable(tx, tz);
+      const s = nearestNode(sx, sz, opt && opt.sy || 0), g = nearestNode(tx, tz, opt && opt.ty || 0);
       if (s < 0 || g < 0) return null;
       gScore.fill(1e9); closed.fill(0); parent.fill(-1);
-      const gx = g % N, gz = (g / N) | 0;
+      const gc = (g / K) | 0, gx = gc % N, gz = (gc / N) | 0;
       const seed = opt ? opt.seed | 0 : 0, noise = opt ? opt.noise || 0 : 0;
       const tr = opt && opt.team ? traffic[opt.team] : null;
-      const h = (i) => { const dx = Math.abs((i % N) - gx), dz = Math.abs(((i / N) | 0) - gz); return Math.max(dx, dz) + 0.414 * Math.min(dx, dz); };
-      const open = [[h(s), s]]; // [f, 칸번호] 최소 힙
+      const h = (i) => { const c = (i / K) | 0, dx = Math.abs((c % N) - gx), dz = Math.abs(((c / N) | 0) - gz); return Math.max(dx, dz) + 0.414 * Math.min(dx, dz); };
+      const open = [[h(s), s]]; // [f, 점번호] 최소 힙
       gScore[s] = 0;
       const push = (item) => { open.push(item); let i = open.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (open[p][0] <= open[i][0]) break; [open[p], open[i]] = [open[i], open[p]]; i = p; } };
       const pop = () => {
@@ -169,37 +221,44 @@
         if (open.length) { open[0] = last; let i = 0; for (;;) { let l = 2 * i + 1, r = l + 1, m = i; if (l < open.length && open[l][0] < open[m][0]) m = l; if (r < open.length && open[r][0] < open[m][0]) m = r; if (m === i) break; [open[m], open[i]] = [open[i], open[m]]; i = m; } }
         return top;
       };
+      // 점 n 에서 이웃 칸 nc 로 가는 점들 (걸어서 오르내림 / 뛰어내림)
+      const hasStep = (hA, nc) => { for (let k = 0; k < nodeN[nc]; k++) { const d = nodeH[nc * K + k] - hA; if (d <= 0.9 && d >= -4) return true; } return false; };
       let found = false;
       while (open.length) {
         const cur = pop()[1];
         if (closed[cur]) continue;
         closed[cur] = 1;
         if (cur === g) { found = true; break; }
-        const cx = cur % N, cz = (cur / N) | 0;
+        const cc = (cur / K) | 0, cx = cc % N, cz = (cc / N) | 0, hA = nodeH[cur];
         for (const [dx, dz, cost] of DIRS) {
           const nx = cx + dx, nz = cz + dz;
           if (nx < 0 || nz < 0 || nx >= N || nz >= N) continue;
-          const ni = nz * N + nx;
-          if (!walk[ni] || closed[ni]) continue;
-          if (dx && dz && (!walk[cz * N + nx] || !walk[nz * N + cx])) continue; // 모서리 파고들기 금지
-          let c = cost;
-          if (noise) c *= 1 + noise * hash(ni, seed);
-          if (tr) c *= 1 + Math.min(2.5, tr[ni] * 2.5);
-          const ng = gScore[cur] + c;
-          if (ng < gScore[ni]) { gScore[ni] = ng; parent[ni] = cur; push([ng + h(ni), ni]); }
+          const nc = nz * N + nx;
+          if (!nodeN[nc]) continue;
+          if (dx && dz && (!hasStep(hA, cz * N + nx) || !hasStep(hA, nz * N + cx))) continue; // 모서리 파고들기 금지
+          for (let k = 0; k < nodeN[nc]; k++) {
+            const ni = nc * K + k, dh = nodeH[ni] - hA;
+            if (closed[ni] || dh > 0.9 || dh < -4) continue; // 오르막은 0.9m까지 후보 (1m 칸 하나 사이에 계단이 두 단일 수 있음) → 아래 climbOk 로 실제로 걸어 올라가는지 확인
+            if (dh > 0.1 && !climbOk(cur, ni)) continue;
+            let c = cost + (dh < -STEP ? -dh * 1.2 : 0); // 뛰어내리는 건 조금 비싸게
+            if (noise) c *= 1 + noise * hash(nc, seed);
+            if (tr) c *= 1 + Math.min(2.5, tr[nc] * 2.5);
+            const ng = gScore[cur] + c;
+            if (ng < gScore[ni]) { gScore[ni] = ng; parent[ni] = cur; push([ng + h(ni), ni]); }
+          }
         }
       }
       if (!found) return null;
       const cells = [];
       for (let i = g; i !== -1; i = parent[i]) cells.push(i);
       cells.reverse();
-      const pts = [[sx, sz]].concat(cells.map(cellCenter));
-      // 직선으로 갈 수 있는 구간은 건너뛰어 부드럽게
+      const pts = [[sx, sz, nodeH[s]]].concat(cells.map((i) => { const c = cellCenter((i / K) | 0); return [c[0], c[1], nodeH[i]]; }));
+      // 바닥에서 직선으로 갈 수 있는 구간은 건너뛰어 부드럽게 (높이가 다른 구간은 그대로 둠)
       const out = [];
       let i = 0;
       while (i < pts.length - 1) {
         let j = pts.length - 1;
-        while (j > i + 1 && segBlocked(pts[i][0], pts[i][1], pts[j][0], pts[j][1])) j--;
+        while (j > i + 1 && (pts[i][2] > 0.06 || pts[j][2] > 0.06 || segBlocked(pts[i][0], pts[i][1], pts[j][0], pts[j][1]) || pts.slice(i, j + 1).some((p) => p[2] > 0.06))) j--;
         out.push(pts[j]);
         i = j;
       }
@@ -304,7 +363,7 @@
       e.head = Math.min(0.5, D.head + 0.1 * L);
       e.turn = D.turn * (1 + 0.4 * L);
       e.hear = D.hear + 8 * L;
-      e.pMiss = D.pMiss * (1 - 0.35 * L);
+      e.pMiss = D.pMiss * (1 - 0.2 * L);
       e.wob = D.wob * (1 - 0.25 * L);
       return e;
     }
@@ -382,9 +441,9 @@
           b.miss = null; b.bursting = false; b.burstT = 0.05;
         } else if (!b.hadSight) b.reactT = Math.max(b.reactT, b.diff.react * 0.5); // 숨었다가 다시 나타난 적에게도 반응 시간이 필요
         b.targetVisible = true; b.hadSight = true;
-        b.lastSeen = { x: best.x, z: best.z };
+        b.lastSeen = { x: best.x, z: best.z, y: feet(best) };
         b.lastSeenT = now;
-        teamIntel[b.team] = { x: best.x, z: best.z, t: now };
+        teamIntel[b.team] = { x: best.x, z: best.z, y: feet(best), t: now };
       } else {
         b.targetVisible = false; b.hadSight = false; b.tgtSpeed = 0;
         if (b.target && now - b.lastSeenT > 3.5) b.target = null;
@@ -398,12 +457,12 @@
       // 가까이(22m 안) 있는 적은 발소리로 위치를 알아챔: 집 안이든 어디든 그 자리로 곧장 찾아감
       let near = null, nd = 22;
       for (const e of aliveEnemies(b)) { const d = Math.hypot(e.x - b.x, e.z - b.z); if (d < nd) { nd = d; near = e; } }
-      if (near) return { x: near.x + rnd(-1.2, 1.2), z: near.z + rnd(-1.2, 1.2), sensed: true };
+      if (near) return jit(near, 1.2);
       if (b.L > 0.05 && Math.random() < 0.15 + 0.7 * b.L) { const h = sampleHeat(); if (h) return h; }
       const en = aliveEnemies(b);
       if (!en.length) return null;
       const e = en[Math.floor(Math.random() * en.length)];
-      return { x: e.x + rnd(-8, 8), z: e.z + rnd(-8, 8) };
+      return { x: e.x + rnd(-8, 8), z: e.z + rnd(-8, 8), y: feet(e) };
     }
     // 출발점→목표 선분 옆으로 비껴난 우회점 (레인마다 다른 쪽, 간격도 다르게)
     function viaPoint(b, g, side) {
@@ -433,7 +492,7 @@
       b.planT = now; b.route = []; b.path = null; b.pathT = 0; b.holding = false;
       const intel = teamIntel[b.team], fresh = intel && now - intel.t < 9;
       if (b.lastSeen && now - b.lastSeenT < 6) { // 방금 본 곳 (쫓아가기). 레인마다 살짝 다른 지점으로
-        const g = { x: b.lastSeen.x + rnd(-2.5, 2.5), z: b.lastSeen.z + rnd(-2.5, 2.5), chase: true };
+        const hi = (b.lastSeen.y || 0) > 0.5, g = { x: b.lastSeen.x + (hi ? 0 : rnd(-2.5, 2.5)), z: b.lastSeen.z + (hi ? 0 : rnd(-2.5, 2.5)), y: b.lastSeen.y || 0, chase: true };
         const v = b.age > 8 && b.lane ? viaPoint(b, g, b.lane) : null;
         if (v && Math.random() < 0.5) b.route.push(v);
         b.route.push(g); return;
@@ -444,10 +503,10 @@
       { // 가까이 있는 적이 있으면 무전보다 그쪽이 먼저 (발소리). 매복 중인 봇은 14m 안일 때만
         const R = style === 'hold' ? 14 : 22;
         const ne = aliveEnemies(b).filter((e) => Math.hypot(e.x - b.x, e.z - b.z) < R).sort((p, q) => Math.hypot(p.x - b.x, p.z - b.z) - Math.hypot(q.x - b.x, q.z - b.z))[0];
-        if (ne) { b.route.push({ x: ne.x + rnd(-1.2, 1.2), z: ne.z + rnd(-1.2, 1.2) }); return; }
+        if (ne) { b.route.push(jit(ne, 1.2)); return; }
       }
       if (fresh && style !== 'hold') { // 무전으로 들은 곳으로 가되, 레인별로 다른 방향에서 접근
-        const g = { x: intel.x + rnd(-4, 4), z: intel.z + rnd(-4, 4) };
+        const hiI = (intel.y || 0) > 0.5, g = { x: intel.x + (hiI ? 0 : rnd(-4, 4)), z: intel.z + (hiI ? 0 : rnd(-4, 4)), y: intel.y || 0 };
         const v = b.lane || Math.random() < 0.5 ? viaPoint(b, g, b.lane || (Math.random() < 0.5 ? 1 : -1)) : null;
         if (v) b.route.push(v);
         b.route.push(g); return;
@@ -508,7 +567,7 @@
       // 어디선가 맞았으면 쏜 쪽을 확인하러 감
       if (b.hurtFrom) {
         const a = b.hurtFrom; b.hurtFrom = null;
-        if (a.alive && a.team !== b.team && !b.targetVisible) { b.lastSeen = { x: a.x, z: a.z }; b.lastSeenT = now; b.route = []; b.holding = false; b.path = null; b.pauseT = 0; }
+        if (a.alive && a.team !== b.team && !b.targetVisible) { b.lastSeen = { x: a.x, z: a.z, y: feet(a) }; b.lastSeenT = now; b.route = []; b.holding = false; b.path = null; b.pauseT = 0; }
       }
 
       let trigger = false, mx = 0, mz = 0, speed = 0;
@@ -532,7 +591,7 @@
             b.bursting = !b.bursting;
             const r = b.bursting ? D.burstOn : D.burstOff; b.burstT = r[0] + Math.random() * (r[1] - r[0]);
             if (b.bursting) { // 새 연사를 시작할 때마다 "이번엔 빗나가는 연사"인지 정함: 처음엔 옆으로 어긋나다가 보정함
-              const pm = clamp(D.pMiss + Math.min(0.2, b.tgtSpeed * 0.03) + (b.flinchT > 0 ? 0.2 : 0), 0, 0.9);
+              const pm = clamp(D.pMiss + Math.min(0.2, b.tgtSpeed * 0.03) + (b.flinchT > 0 ? 0.2 : 0) + (w.pellets ? 0.2 : 0), 0, 0.9); // 샷건은 알갱이가 퍼져서 더 자주 빗나가게
               if (Math.random() < pm) {
                 const a = rnd(D.miss[0], D.miss[1]), sgn = Math.random() < 0.5 ? -1 : 1, T = rnd(0.35, 0.8);
                 b.miss = { y: sgn * a, p: rnd(-0.5, 0.5) * a, t: T, T };
@@ -585,7 +644,7 @@
           if (g) {
             b.pathT -= dt;
             if (!b.path || b.pathT <= 0) {
-              b.path = findPath(b.x, b.z, g.x, g.z, { seed: b.seed, noise: 0.5 + 0.4 * hash(b.seed, 7), team: b.team });
+              b.path = findPath(b.x, b.z, g.x, g.z, { seed: b.seed, noise: 0.5 + 0.4 * hash(b.seed, 7), team: b.team, sy: feet(b), ty: g.y || 0 });
               b.pathT = 1.5 + rnd(0, 0.7);
               if (!b.path) { b.route.shift(); b.path = null; b.pauseT = 0.3; } // 길이 없으면 잠깐 쉬었다가 다시 계획 (매 프레임 길찾기 방지)
             }
@@ -593,7 +652,8 @@
               const p = b.path[0];
               const dx = p[0] - b.x, dz = p[1] - b.z, d = Math.hypot(dx, dz);
               const final = b.path.length === 1;
-              if (d < (final && !b.route[1] ? 0.7 : 1.3)) {
+              const fy = feet(b), ph = p[2] || 0, stairs = ph > 0.06 || Math.abs(ph - fy) > 0.3 || (b.path[1] && Math.abs((b.path[1][2] || 0) - ph) > 0.3); // 계단/층 이동 구간은 지점을 정확히 밟아야 함 (옆으로 스치면 턱에 막힘)
+              if (d < (stairs ? 0.6 : final && !b.route[1] ? 0.7 : 1.3) && Math.abs(fy - ph) < (stairs ? 0.6 : 1.0)) { // 같은 층일 때만 도착으로 침 (다리 밑을 지나가며 착각하지 않게)
                 b.path.shift();
                 if (!b.path.length) { // 이 지점에 도착
                   const done = b.route.shift(); b.path = null; b.pathT = 0;
@@ -710,9 +770,9 @@
     }
     function observePlayer(dt, P) { if (P && P.alive) { sess.heat[gridIdx(P.x, P.z)] += dt; sess.total += dt; } }
     function observeShot(dist) { if (Number.isFinite(dist) && dist > 0 && dist < 120) { sess.shotN++; sess.shotSum += dist; } }
-    function roundEnd(playerWon) { // 플레이어가 라운드를 이기면 AI가 더 배우고, 지면 조금 풀어줌
+    function roundEnd(playerWon) { // 라운드가 끝날 때마다 AI가 더 배움 (플레이어가 이기면 더 많이)
       sess.rounds++;
-      sess.adapt = clamp(sess.adapt + (playerWon === true ? 0.14 : playerWon === false ? -0.06 : 0), 0, 0.6);
+      sess.adapt = clamp(sess.adapt + (playerWon === true ? 0.14 : 0.03), 0, 0.6); // 학습은 줄어들지 않고 계속 쌓임 (이기면 많이, 져도 조금 더 관찰)
       buildHeatMix();
     }
     function endMatch(playerWon, diffKey) { // 경기 끝: 기억을 저장
@@ -730,7 +790,7 @@
     }
     function learnInfo(diffKey) { return { L: learnLevel(diffKey), cap: LEARN_CAP[diffKey] || 0, matches: profile.matches }; }
 
-    return { bots, spawn, clear, update, DIFFS, NAMES, PRIMARIES, nav: { walk, findPath }, beginMatch, observePlayer, observeShot, roundEnd, endMatch, learnInfo, _hot: hotspots, _traffic: traffic };
+    return { bots, spawn, clear, update, DIFFS, NAMES, PRIMARIES, nav: { walk, findPath, nodeH, nodeN, K }, beginMatch, observePlayer, observeShot, roundEnd, endMatch, learnInfo, _hot: hotspots, _traffic: traffic };
   }
 
   // 기억 보기/지우기 (로비 화면용)
