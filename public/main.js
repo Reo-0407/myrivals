@@ -33,7 +33,7 @@
   }
 
   function show(name) {
-    ['screen-nick', 'screen-lobby', 'game'].forEach((id) => $(id).classList.toggle('hidden', id !== name));
+    ['screen-nick', 'screen-lobby', 'screen-friendly', 'game'].forEach((id) => $(id).classList.toggle('hidden', id !== name));
   }
 
   // =====================================================================
@@ -189,10 +189,13 @@
 
   const applyCrosshair = () => { $('xh').style.setProperty('--xhc', RivalShop.equippedXh().color); }; // 장착한 조준점 색
 
+  if (window.RivalFriendly) RivalFriendly.onBack = () => enterLobby();
+
   function enterLobby() {
     $('lobby-nick').textContent = myNick;
     $('my-stats').textContent = myStats ? '내 전적: ' + myStats.wins + '승 ' + myStats.losses + '패 · ' + myStats.kills + '킬 ' + myStats.deaths + '데스' : '';
     show('screen-lobby');
+    if (window.RivalNet) RivalNet.connect(myId); // 친선전투 서버에 접속 (접속자 목록/초대 받기)
     RivalShop.refreshBadge();
     loadBoard();
     if (!safeGet('rival_help')) showHelp(); // 처음 들어온 사람에게 한 번 보여줌
@@ -241,7 +244,7 @@
   function loadMap(id) {
     if (!RivalMap.has(id)) id = 'warehouse';
     if (curMap === id && mapGroup) return;
-    if (botsApi) botsApi.clear();
+    if (botsApi) botsApi.clear(true);
     clearThrown(); clearRange();
     if (mapGroup) { scene.remove(mapGroup); mapGroup.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); }
     boxes.length = 0; // phys가 같은 배열을 계속 쓰므로 비우고 다시 채움
@@ -370,16 +373,17 @@
         let dmg = w.dmg * W.falloff(w, r.t);
         if (r.head) dmg *= w.head; else if (py < r.e.y - (r.e.eye || EYE) + 0.7) dmg *= 0.85; // 다리는 약간 약함
         if (shooter.isBot && shooter.diff) dmg *= shooter.diff.dmg; // 낮은 난이도 봇은 데미지가 약함
-        if (shooter.isBot && r.e === P) { // 봇이 나를 한 방에 죽이지 못하게: 총알 한 발 최대 60, 샷건 한 번(알갱이 합계) 최대 55
+        if (shooter.isBot && (r.e === P || r.e.human)) { // 봇이 사람을 한 방에 죽이지 못하게: 총알 한 발 최대 60, 샷건 한 번(알갱이 합계) 최대 55
           dmg = Math.min(dmg, BOT_HIT_CAP);
           if (n > 1) { dmg = Math.min(dmg, Math.max(0, BOT_VOLLEY_CAP - volleyOnMe)); volleyOnMe += dmg; if (dmg < 1) { spark(px, py, pz, 0xff3030); anyHit = true; hitMe = true; tracer(mz[0], mz[1], mz[2], px, py, pz); continue; } }
         }
         spark(px, py, pz, 0xff3030); anyHit = true; if (r.e === P) hitMe = true;
-        if (isMe && r.e.isBot && !r.e.dummy && match.mode === 'match') botsApi.observeShot(r.t);
+        if (isMe && r.e.isBot && !r.e.dummy && match.mode === 'match' && !match.net) botsApi.observeShot(r.t);
         damage(r.e, dmg, r.head, shooter, w);
       } else if (r.wall) spark(px, py, pz, 0xffc060);
       tracer(mz[0], mz[1], mz[2], px, py, pz);
     }
+    if (match.net && (isMe || (shooter.isBot && !shooter.remote))) relay('all', 'fire', { i: idOf(shooter), o: [r2(ox), r2(oy), r2(oz)], d: [r2(dx), r2(dy), r2(dz)], w: w.id }); // 소리/총알 궤적 보여주기용
     if (isMe) { rangeStats.shots++; if (anyHit) rangeStats.hits++; if (match.mode === 'match') { match.shots++; if (anyHit) match.hits++; } }
     else if (shooter.isBot && shooter.team === 'B') { botStats.shots++; if (hitMe) botStats.hitsOnMe++; }
   }
@@ -387,6 +391,14 @@
   function damage(t, amount, head, attacker, w) {
     if (!t.alive || match.phase !== 'live') return;
     amount = Math.max(1, Math.round(amount));
+    if (match.net && t.remote) { // 다른 기기가 주인인 캐릭터: 맞혔다고 알려주면 그쪽이 체력을 깎고, 죽으면 직접 알려줌
+      t.flash = 0.12;
+      if (attacker === P) { hitmark(head); Sfx.hit(head); if (head) match.heads++; }
+      const msg = { f: idOf(attacker), d: amount, h: head ? 1 : 0, w: w ? w.id : 'ar' };
+      if (t.human) relay(t.id, 'hit', msg); else { msg.b = t.id; relay('host', 'hit', msg); }
+      t.hp = Math.max(1, t.hp - amount); // 다음 상태 전송 때 진짜 값으로 맞춰짐
+      return;
+    }
     t.hp = Math.max(0, t.hp - amount);
     if (t.isBot) { t.flinchT = 0.5; if (attacker && attacker !== t) t.hurtFrom = attacker; } // 맞으면 움찔하고 쏜 쪽을 확인
     if (t === P && attacker && attacker !== P) showHitDir(attacker);
@@ -401,6 +413,7 @@
     if (a === P && a !== t) { match.kills++; rangeStats.kills++; Sfx.kill(); }
     if (t === P) { match.deaths++; inp.adsToggle = false; inp.crouch = false; $('btn-ads').classList.remove('on'); $('btn-crouch').classList.remove('on'); P.flashT = 0; }
     feed(a === t ? t.name + '  [' + w.name + ' 자폭]' : a.name + '  [' + w.name + (head ? ' · 헤드샷' : '') + ']  ' + t.name, a === P || t === P);
+    if (match.net && !t.remote) relay('all', 'dead', { v: idOf(t), k: idOf(a), h: head ? 1 : 0, w: w.id }); // 내(또는 방장의 봇) 죽음은 주인이 모두에게 알림
     checkRoundEnd();
   }
 
@@ -454,10 +467,22 @@
   // =====================================================================
   // 매치 / 라운드
   // =====================================================================
-  const match = { shots: 0, hits: 0, heads: 0, wins: 5, mode: 'match', phase: 'idle', round: 0, score: { A: 0, B: 0 }, timer: 0, phaseT: 0, teamSize: 2, diff: 'normal', kills: 0, deaths: 0, lastCount: 99 };
+  const match = { net: false, gear: false, shots: 0, hits: 0, heads: 0, wins: 5, mode: 'match', phase: 'idle', round: 0, score: { A: 0, B: 0 }, timer: 0, phaseT: 0, teamSize: 2, diff: 'normal', kills: 0, deaths: 0, lastCount: 99 };
+
+  // =====================================================================
+  // 친선전투(온라인) 공용 상태: 방장의 기기가 라운드 진행/AI 봇을 맡고, 모두가 자기 캐릭터의 위치·발사·피격을 서로에게 알려 줌
+  // =====================================================================
+  const NET = { on: false, host: false, myTeam: 'A', room: null, settings: null, ids: Object.create(null), sendT: 0, bsT: 0, phT: 0, ready: new Set(), waiting: false, readyT: 0 };
+  const lt = (rt) => (rt === NET.myTeam ? 'A' : 'B');                               // 방 팀(A/B) → 내 화면 기준 (우리편 = A)
+  const rtOf = (l) => (l === 'A' ? NET.myTeam : NET.myTeam === 'A' ? 'B' : 'A');    // 내 화면 기준 → 방 팀
+  const idOf = (e) => (e === P ? myId : e.id);
+  const entById = (id) => (id === myId ? P : NET.ids[id] || (botsApi && botsApi.bots.find((b) => b.id === id)) || null);
+  const scoreRoom = () => { const s = { A: 0, B: 0 }; s[NET.myTeam] = match.score.A; s[NET.myTeam === 'A' ? 'B' : 'A'] = match.score.B; return s; };
+  const relay = (to, t, d) => { if (NET.on) RivalNet.relay(to, t, d); };
+  const r2 = (v) => Math.round(v * 100) / 100;
 
   function startMatch() {
-    match.mode = 'match';
+    match.mode = 'match'; match.net = false; $('res-again').classList.remove('hidden'); $('res-lobby').textContent = '로비로';
     P.name = myNick || '나';
     match.teamSize = settings.mode; match.diff = settings.diff; match.wins = winRounds(); // 매치 도중에는 선승 수가 바뀌지 않게 시작할 때 고정
     match.round = 0; match.score.A = match.score.B = 0; match.kills = match.deaths = 0; match.shots = match.hits = match.heads = 0; match.phase = 'ready';
@@ -535,7 +560,7 @@
   const pickRandom = (slot) => { const ids = Object.keys(W.list).filter((k) => W.list[k].slot === slot); return ids[Math.floor(Math.random() * ids.length)]; };
   function setupGuns() {
     let lo = settings.loadout;
-    if (settings.randomGear && match.mode === 'match') {
+    if ((match.net ? match.gear : settings.randomGear) && match.mode === 'match') {
       lo = { primary: pickRandom('primary'), secondary: pickRandom('secondary'), melee: pickRandom('melee'), utility: pickRandom('utility') };
       feed('🎲 이번 라운드 무기: ' + [lo.primary, lo.secondary, lo.melee, lo.utility].map((id) => W.list[id].name).join(' · '), true);
     }
@@ -547,6 +572,7 @@
   }
 
   function startRound() {
+    if (match.net) { startRoundNet(); return; }
     match.round++;
     match.phase = 'countdown'; match.phaseT = COUNTDOWN; match.lastCount = 99;
     botsApi.clear(); clearThrown(); P.flashT = 0; specTarget = null; specIdx = 0;
@@ -567,6 +593,7 @@
 
   function checkRoundEnd(timeUp) {
     if (match.phase !== 'live' || match.mode === 'range') return;
+    if (match.net && !NET.host) return; // 친선전투: 라운드 승패는 방장이 정함
     const a = aliveCount('A'), b = aliveCount('B');
     if (b === 0) endRound('A', '적을 모두 처치!');
     else if (a === 0) endRound('B', '팀이 전멸했어요');
@@ -580,11 +607,12 @@
     match.phase = 'between'; match.phaseT = BETWEEN;
     if (winner) match.score[winner]++;
     const mine = winner === 'A';
-    botsApi.roundEnd(winner ? mine : null);
-    const li = match.diff && botsApi.learnInfo(match.diff);
+    if (!match.net) botsApi.roundEnd(winner ? mine : null);
+    const li = !match.net && match.diff && botsApi.learnInfo(match.diff);
     if (winner) (mine ? Sfx.win : Sfx.lose)();
     setBanner((winner ? (mine ? '🏆 라운드 승리!' : '라운드 패배') : '무승부') + '<small>' + why + ' · ' + match.score.A + ' : ' + match.score.B + (li && li.cap ? ' · 🧠 AI 학습 ' + Math.round(li.L * 100) + '%' : '') + '</small>', BETWEEN);
     inp.fire = false;
+    if (match.net) { relay('all', 'er', { w: winner ? rtOf(winner) : null, why, s: scoreRoom() }); broadcastPhase(); }
   }
 
   function updateMatch(dt) {
@@ -592,13 +620,13 @@
       match.phaseT -= dt;
       const c = Math.ceil(match.phaseT);
       if (c !== match.lastCount && c > 0) { match.lastCount = c; Sfx.beep(false); setBanner(c + '<small>라운드 ' + match.round + '</small>', 0); }
-      if (match.phaseT <= 0) { match.phase = 'live'; match.timer = ROUND_TIME; Sfx.beep(true); setBanner('시작!', 0.8); }
+      if (match.phaseT <= 0 && (!match.net || NET.host)) { match.phase = 'live'; match.timer = ROUND_TIME; Sfx.beep(true); setBanner('시작!', 0.8); if (match.net) broadcastPhase(); }
     } else if (match.phase === 'live' && match.mode !== 'range') {
       match.timer -= dt;
-      if (match.timer <= 0) { match.timer = 0; checkRoundEnd(true); }
+      if (match.timer <= 0) { match.timer = 0; if (!match.net || NET.host) checkRoundEnd(true); }
     } else if (match.phase === 'between') {
       match.phaseT -= dt;
-      if (match.phaseT <= 0) {
+      if (match.phaseT <= 0 && (!match.net || NET.host)) {
         if (match.score.A >= match.wins || match.score.B >= match.wins) finishMatch();
         else startRound();
       }
@@ -606,6 +634,7 @@
   }
 
   async function finishMatch() {
+    if (match.net) { relay('all', 'ov', { s: scoreRoom() }); showNetResult(); RivalNet.endMatch(); return; }
     match.phase = 'over';
     const won = match.score.A > match.score.B;
     botsApi.endMatch(won, match.diff);
@@ -810,6 +839,7 @@
     let x = P.x + d[0] * 0.5, y = P.y - 0.1 + d[1] * 0.5, z = P.z + d[2] * 0.5;
     if (inBox(x, y, z)) { x = P.x; y = P.y - 0.1; z = P.z; } // 벽에 바싹 붙어 던지면 벽 속으로 들어가지 않게
     nades.push({ w, type: w.util, x, y, z, vx: d[0] * 15, vy: d[1] * 15 + 3.2, vz: d[2] * 15, t: w.fuse, m, owner: P });
+    if (match.net) relay('all', 'nade', { w: w.id, p: [r2(x), r2(y), r2(z)], v: [r2(d[0] * 15), r2(d[1] * 15 + 3.2), r2(d[2] * 15)], o: myId });
     Sfx.shot('swing', 1);
   }
 
@@ -823,6 +853,7 @@
     const sp = D / T, vy = (9 * T * T - (b.y - 0.3)) / T;
     let x = b.x, y = b.y - 0.1, z = b.z;
     nades.push({ w, type: w.util, x, y, z, vx: dx / D * sp, vy, vz: dz / D * sp, t: w.fuse, m, owner: b });
+    if (match.net) relay('all', 'nade', { w: w.id, p: [r2(x), r2(y), r2(z)], v: [r2(dx / D * sp), r2(vy), r2(dz / D * sp)], o: b.id });
     Sfx.shot('swing', Math.max(0, 1 - Math.hypot(b.x - P.x, b.z - P.z) / 50));
   }
 
@@ -860,17 +891,19 @@
 
   function explode(n) {
     const w = n.w, dP = Math.hypot(n.x - P.x, n.y - P.y, n.z - P.z);
+    const auth = !match.net || n.owner === P || (NET.host && n.owner.isBot && !n.owner.remote); // 친선전투: 피해는 던진 기기만 계산(중복 방지), 눈부심은 각자
     if (n.type === 'smoke') { Sfx.smokePop(); addSmoke(n.x, n.z, w.radius); return; }
     const flashing = n.type === 'flash';
     if (flashing) { Sfx.flashBang(Math.max(0.2, 1 - dP / 60)); addBlast(n.x, n.y, n.z, 1.4, 0xffffff); }
     else { Sfx.boom(Math.max(0.15, 1 - dP / 50)); addBlast(n.x, n.y, n.z, w.radius * 0.5, 0xffa040); }
     all().forEach((e) => {
       if (!e.alive || (e.team === n.owner.team && e !== n.owner)) return; // 아군은 안전, 던진 본인은 영향받음
+      if (!auth && e !== P) return;
       const cy = e.y - (flashing ? 0.2 : 0.6);
       const dx = e.x - n.x, dy = cy - (n.y + 0.2), dz = e.z - n.z, d = Math.hypot(dx, dy, dz);
       if (d > w.radius) return;
       if (d > 0.4 && phys.rayBoxes(n.x, n.y + 0.2, n.z, dx / d, dy / d, dz / d, d) < d - 0.3) return; // 벽이 막아줌
-      if (!flashing) { let nd = w.dmg * (1 - d / w.radius); if (e === P && n.owner.isBot) nd = Math.min(nd, BOT_NADE_CAP); damage(e, nd, false, n.owner, w); return; }
+      if (!flashing) { if (!auth) return; let nd = w.dmg * (1 - d / w.radius); if ((e === P || e.human) && n.owner.isBot) nd = Math.min(nd, BOT_NADE_CAP); damage(e, nd, false, n.owner, w); return; }
       const toB = [-dx / (d || 1), -dy / (d || 1), -dz / (d || 1)];
       if (e === P) { // 폭발 쪽을 쳐다보고 있을수록 오래 멂
         const v = camDir(), f = (v[0] * toB[0] + v[1] * toB[1] + v[2] * toB[2] + 1) / 2;
@@ -1008,14 +1041,15 @@
   // =====================================================================
   // 폰을 세로로 들면("가로로 돌려주세요" 안내가 뜰 때) 게임을 멈춤 — 안 멈추면 그 사이에 봇에게 맞음
   const portrait = () => isTouch && window.innerHeight > window.innerWidth;
-  const running = () => (!!document.pointerLockElement || mobilePlaying) && !portrait();
+  const running = () => (((NET.on && match.phase !== 'over') || !!document.pointerLockElement || mobilePlaying)) && !portrait(); // 친선전투는 일시정지가 없음(다른 사람이 계속 움직이니까)
 
   function update(dt) {
     now += dt;
     updateMatch(dt);
+    if (NET.on) netTick(dt);
     updatePlayer(dt);
     updateRange(dt);
-    if (match.mode === 'match' && match.phase === 'live') botsApi.observePlayer(dt, P);
+    if (match.mode === 'match' && !match.net && match.phase === 'live') botsApi.observePlayer(dt, P);
     botsApi.update(dt, now, match.phase === 'live');
     updateThrown(dt);
     updateFx(dt);
@@ -1091,7 +1125,7 @@
 
   function resume() {
     Sfx.init();
-    if (match.phase === 'ready') { if (match.mode === 'range') startRangeSession(); else startRound(); }
+    if (match.phase === 'ready') { if (match.net) netReady(); else if (match.mode === 'range') startRangeSession(); else startRound(); }
     if (!isTouch) { try { const pr = $('c').requestPointerLock(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {} return; } // 잠금 요청이 취소돼도 에러 없이 넘어감
     mobilePlaying = true; hideOverlay();
     try { // 전체화면 + 가로 고정 시도 (아이폰 사파리는 막혀 있어서 실패해도 괜찮음)
@@ -1108,10 +1142,12 @@
     inp.fire = false; inp.adsHold = false; inp.adsToggle = false;
     try { if (document.fullscreenElement) document.exitFullscreen(); } catch (e) {}
     if (document.pointerLockElement) document.exitPointerLock();
-    if (botsApi) { botsApi.clear(); clearThrown(); clearRange(); }
-    match.phase = 'idle'; match.mode = 'match';
+    if (botsApi) { botsApi.clear(true); clearThrown(); clearRange(); }
+    const wasNet = NET.on, finished = match.phase === 'over';
+    if (wasNet) { NET.on = false; NET.waiting = false; if (!finished) RivalNet.leave(); } // 경기 중에 나가면 방에서도 나감, 경기가 끝난 뒤면 방으로 돌아감
+    match.phase = 'idle'; match.mode = 'match'; match.net = false; $('res-again').classList.remove('hidden');
     $('result').classList.add('hidden'); showOverlayHidden();
-    enterLobby();
+    if (wasNet && finished && RivalNet.room) { show('screen-friendly'); RivalFriendly.show(); } else enterLobby();
   }
   function showOverlayHidden() { $('overlay').classList.add('hidden'); }
 
@@ -1125,7 +1161,7 @@
   document.addEventListener('pointerlockchange', () => {
     if ($('game').classList.contains('hidden')) return;
     if (document.pointerLockElement) hideOverlay();
-    else if (match.phase !== 'over' && match.phase !== 'idle') showOverlay(match.mode === 'range' ? '🎯 사격장 일시정지' : '일시정지', '', '계속하기');
+    else if (match.phase !== 'over' && match.phase !== 'idle') showOverlay(match.mode === 'range' ? '🎯 사격장 일시정지' : match.net ? '친선전투 (일시정지 없음 · 게임은 계속돼요)' : '일시정지', '', '계속하기');
   });
 
   // =====================================================================
@@ -1249,6 +1285,214 @@
     $('btn-exit').addEventListener('touchstart', (e) => { e.preventDefault(); if (confirm('매치를 나갈까요? (기록은 저장되지 않아요)')) leaveGame(); }, { passive: false });
   })();
 
+
+  // =====================================================================
+  // 친선전투(온라인): 시작 / 상태 주고받기 / 라운드 진행 / 결과
+  // =====================================================================
+  function startNet(room) {
+    NET.on = true; NET.room = room; NET.host = room.host === myId;
+    const me = room.members.find((x) => x.id === myId); NET.myTeam = me ? me.team : 'A';
+    const s = room.settings; NET.settings = s;
+    show('game');
+    if (!started) { started = true; initGL(); }
+    loadMap(RivalMap.has(s.map) ? s.map : 'warehouse');
+    botsApi.clear(true); clearThrown(); clearRange();
+    Sfx.init();
+    $('touch-ui').classList.toggle('hidden', !isTouch);
+    camera.fov = settings.fov; camera.updateProjectionMatrix();
+    mobilePlaying = false; $('btn-arm').classList.add('hidden');
+    match.mode = 'match'; match.net = true; match.gear = !!s.gear;
+    match.gear = false; setupGuns(); match.gear = !!s.gear; // 라운드가 시작되기 전에도 손에 들 무기가 있어야 화면 갱신이 안 깨짐
+    P.name = myNick || '나'; P.kills = P.deaths = 0;
+    match.teamSize = s.size; match.diff = s.diff; match.wins = s.wins;
+    match.round = 0; match.score.A = match.score.B = 0; match.kills = match.deaths = 0; match.shots = match.hits = match.heads = 0; match.phase = 'ready';
+    $('result').classList.add('hidden'); sbOpen = false; $('feed').innerHTML = ''; setBanner(''); applyCrosshair();
+    NET.ids = Object.create(null); NET.ready = new Set(); NET.waiting = false; NET.readyT = 0; NET.sendT = NET.bsT = NET.phT = 0;
+    room.members.forEach((mm) => {
+      if (mm.id === myId) return;
+      const e = botsApi.spawn({ netId: mm.id, name: mm.nick, team: lt(mm.team), human: true, persist: true, remote: true, diff: 'normal', x: 0, z: 0, yaw: 0, primary: 'ar' });
+      e.alive = false; e.mesh.root.visible = false; // 라운드가 시작되고 첫 위치를 받을 때까지 숨김
+      NET.ids[mm.id] = e;
+    });
+    showOverlay('🤝 친선전투', world.name + ' · ' + s.size + ' vs ' + s.size + ' · ' + s.wins + '선승 · ' + (s.ai ? 'AI ' + botsApi.DIFFS[s.diff].name : 'AI 없음') + (s.gear ? ' · 무기 랜덤' : '') + ' — 준비되면 눌러 주세요', '입장');
+    last = 0; cancelAnimationFrame(raf); raf = requestAnimationFrame(loop);
+  }
+
+  function netReady() { // "입장" 버튼: 나는 준비됨. 방장은 모두 준비되면(최대 20초) 첫 라운드를 시작
+    setBanner(NET.host ? '다른 사람을 기다리는 중…' : '방장이 시작하길 기다리는 중…', 0);
+    if (NET.host) { NET.ready.add(myId); NET.waiting = true; NET.readyT = 0; } else RivalNet.relay('host', 'rdy', {});
+  }
+
+  function broadcastPhase() { relay('all', 'ph', { p: match.phase, r: match.round, t: Math.round(match.timer), pt: r2(match.phaseT), s: scoreRoom() }); }
+
+  // 방장: 새 라운드 (사람 자리 배정 + 봇 소환 + 모두에게 알림)
+  function startRoundNet() {
+    match.round++;
+    match.phase = 'countdown'; match.phaseT = COUNTDOWN; match.lastCount = 99;
+    botsApi.clear(); clearThrown(); P.flashT = 0; specTarget = null; specIdx = 0;
+    const s = NET.settings, members = (RivalNet.room && RivalNet.room.members) || NET.room.members;
+    const sp = { A: shuffle(world.spawns.A.slice()), B: shuffle(world.spawns.B.slice()) }, used = { A: 0, B: 0 };
+    const nextSpawn = (t) => sp[t][used[t]++ % sp[t].length];
+    const assign = {};
+    members.forEach((mm) => { const p = nextSpawn(mm.team); assign[mm.id] = { x: p.x, z: p.z, yaw: p.yaw }; });
+    placePlayer(assign[myId] || nextSpawn(NET.myTeam));
+    setupGuns();
+    members.forEach((mm) => {
+      const e = NET.ids[mm.id]; if (!e) return;
+      const a = assign[mm.id]; botsApi.revive(e); e.team = lt(mm.team);
+      botsApi.setRemote(e, { x: a.x, y: EYE, z: a.z, yaw: a.yaw, pitch: 0, eye: EYE }, true);
+    });
+    const roster = [], names = shuffle(botsApi.NAMES.slice());
+    if (s.ai) ['A', 'B'].forEach((t) => {
+      const n = s.size - members.filter((mm) => mm.team === t).length;
+      for (let i = 0; i < n; i++) {
+        const p = nextSpawn(t), b = botsApi.spawn({ team: lt(t), name: '🤖' + names.pop(), diff: s.diff, x: p.x, z: p.z, yaw: p.yaw, noLearn: true });
+        roster.push({ id: b.id, team: t, name: b.name, x: p.x, z: p.z, yaw: p.yaw, g: b.gun.id });
+      }
+    });
+    relay('all', 'rs', { r: match.round, a: assign, b: roster });
+    broadcastPhase();
+  }
+  function placePlayer(p) {
+    spawnPoint = p; inp.crouch = false; $('btn-crouch').classList.remove('on');
+    Object.assign(P, { x: p.x, y: EYE, eye: EYE, z: p.z, vy: 0, onGround: true, yaw: p.yaw, pitch: 0, hp: 100, alive: true, firedT: 0 });
+    deadCamY = EYE; recoilAcc = 0;
+  }
+  // 참가자: 방장이 알려준 라운드 시작
+  function netRoundStart(d) {
+    match.round = d.r; match.phase = 'countdown'; match.phaseT = COUNTDOWN; match.lastCount = 99;
+    botsApi.clear(); clearThrown(); P.flashT = 0; specTarget = null; specIdx = 0;
+    const members = (RivalNet.room && RivalNet.room.members) || NET.room.members;
+    placePlayer(d.a[myId] || { x: 0, z: NET.myTeam === 'A' ? 27 : -27, yaw: NET.myTeam === 'A' ? 0 : Math.PI });
+    setupGuns();
+    members.forEach((mm) => {
+      const e = NET.ids[mm.id], a = d.a[mm.id]; if (!e || !a) return;
+      botsApi.revive(e); e.team = lt(mm.team);
+      botsApi.setRemote(e, { x: a.x, y: EYE, z: a.z, yaw: a.yaw, pitch: 0, eye: EYE }, true);
+    });
+    (d.b || []).forEach((b) => botsApi.spawn({ netId: b.id, name: b.name, team: lt(b.team), remote: true, diff: 'normal', x: b.x, z: b.z, yaw: b.yaw, primary: W.list[b.g] ? b.g : 'ar' }));
+    hideOverlay();
+  }
+  function netRoundEnd(d) {
+    match.phase = 'between'; match.phaseT = BETWEEN;
+    match.score.A = d.s[NET.myTeam]; match.score.B = d.s[NET.myTeam === 'A' ? 'B' : 'A'];
+    const winner = d.w ? lt(d.w) : null, mine = winner === 'A';
+    if (winner) (mine ? Sfx.win : Sfx.lose)();
+    setBanner((winner ? (mine ? '🏆 라운드 승리!' : '라운드 패배') : '무승부') + '<small>' + String(d.why || '').slice(0, 60) + ' · ' + match.score.A + ' : ' + match.score.B + '</small>', BETWEEN);
+    inp.fire = false;
+  }
+  function showNetResult(sc) {
+    if (sc) { match.score.A = sc[NET.myTeam]; match.score.B = sc[NET.myTeam === 'A' ? 'B' : 'A']; }
+    match.phase = 'over'; setBanner('');
+    if (document.pointerLockElement) document.exitPointerLock();
+    const a = match.score.A, b = match.score.B;
+    $('res-title').textContent = a > b ? '🏆 승리!' : a < b ? '패배' : '무승부';
+    $('res-score').textContent = '라운드 ' + a + ' : ' + b + (match.shots ? ' · 명중률 ' + Math.round(100 * match.hits / match.shots) + '% · 헤드샷 ' + match.heads : '');
+    $('res-stats').textContent = '이번 경기: ' + match.kills + '킬 ' + match.deaths + '데스 · 친선전투라서 기록/코인은 없어요';
+    $('res-coins').textContent = '';
+    $('res-again').classList.add('hidden'); $('res-lobby').textContent = '방으로 돌아가기';
+    $('result').classList.remove('hidden');
+  }
+
+  // 매 프레임: 내 상태 보내기(약 15번/초), 방장은 봇 상태/단계 보내기, 방장은 모두 준비됐는지 확인
+  function netTick(dt) {
+    NET.sendT -= dt;
+    if (NET.sendT <= 0) { NET.sendT = 0.066; relay('all', 'st', { x: r2(P.x), y: r2(P.y), z: r2(P.z), a: r2(P.yaw), p: r2(P.pitch), e: r2(P.eye), h: P.hp, l: P.alive ? 1 : 0 }); }
+    if (!NET.host) return;
+    NET.bsT -= dt;
+    if (NET.bsT <= 0 && botsApi.bots.length) {
+      NET.bsT = 0.1;
+      const list = [];
+      botsApi.bots.forEach((b) => { if (!b.remote && b.isBot) list.push([b.id, r2(b.x), r2(b.y), r2(b.z), r2(b.yaw), r2(b.pitch), b.hp, b.alive ? 1 : 0]); });
+      if (list.length) relay('all', 'bs', list);
+    }
+    NET.phT -= dt; if (NET.phT <= 0) { NET.phT = 1; if (match.phase !== 'ready') broadcastPhase(); }
+    if (NET.waiting && match.phase === 'ready') {
+      NET.readyT += dt;
+      const need = ((RivalNet.room && RivalNet.room.members) || NET.room.members).length;
+      if (NET.ready.size >= need || NET.readyT > 20) { NET.waiting = false; startRoundNet(); hideOverlay(); }
+    }
+  }
+
+  // 다른 기기에서 온 메시지
+  function netMsg(from, t, d) {
+    if (!NET.on || !d) return;
+    switch (t) {
+      case 'st': { const e = NET.ids[from]; if (!e) break; botsApi.setRemote(e, { x: +d.x, y: +d.y, z: +d.z, yaw: +d.a, pitch: +d.p, eye: +d.e }, false); e.hp = +d.h || 0; break; }
+      case 'bs': {
+        if (NET.host || !Array.isArray(d)) break;
+        d.forEach((r) => { const e = botsApi.bots.find((b) => b.id === r[0]); if (!e) return; botsApi.setRemote(e, { x: r[1], y: r[2], z: r[3], yaw: r[4], pitch: r[5], eye: EYE }, false); e.hp = r[6]; });
+        break;
+      }
+      case 'fire': netFire(d); break;
+      case 'hit': { // 내가(또는 방장이 봇 대신) 맞았다는 알림
+        const att = entById(d.f) || { name: '?', team: 'B', x: P.x, y: P.y, z: P.z, yaw: 0 };
+        const wdef = W.list[d.w] || W.list.ar;
+        const dmg = Math.min(200, Math.max(1, +d.d || 1));
+        if (d.b) { if (!NET.host) break; const bot = botsApi.bots.find((b) => b.id === d.b && !b.remote); if (bot) damage(bot, dmg, !!d.h, att, wdef); }
+        else damage(P, dmg, !!d.h, att, wdef);
+        break;
+      }
+      case 'dead': netDead(d); break;
+      case 'nade': {
+        const w = W.list[d.w], owner = entById(d.o); if (!w || !w.util || !owner || !Array.isArray(d.p) || !Array.isArray(d.v)) break;
+        if (!nadeGeo) nadeGeo = new THREE.SphereGeometry(0.08, 10, 8);
+        const mesh = new THREE.Mesh(nadeGeo, new THREE.MeshLambertMaterial({ color: NADE_COLOR[w.util] })); scene.add(mesh);
+        nades.push({ w, type: w.util, x: d.p[0], y: d.p[1], z: d.p[2], vx: d.v[0], vy: d.v[1], vz: d.v[2], t: w.fuse, m: mesh, owner });
+        break;
+      }
+      case 'rdy': if (NET.host) NET.ready.add(from); break;
+      case 'rs': if (!NET.host) netRoundStart(d); break;
+      case 'ph': {
+        if (NET.host) break;
+        const prev = match.phase; match.round = d.r; match.timer = d.t; match.phaseT = d.pt;
+        match.score.A = d.s[NET.myTeam]; match.score.B = d.s[NET.myTeam === 'A' ? 'B' : 'A'];
+        if (d.p !== prev && prev !== 'over') { match.phase = d.p; if (d.p === 'live') { Sfx.beep(true); setBanner('시작!', 0.8); } }
+        break;
+      }
+      case 'er': if (!NET.host) netRoundEnd(d); break;
+      case 'ov': if (!NET.host) showNetResult(d.s); break;
+      default: break;
+    }
+  }
+
+  // 남이 쏜 총: 소리와 총알 궤적만 보여줌 (맞았는지는 쏜 사람이 계산해서 따로 알려 줌)
+  function netFire(d) {
+    const e = entById(d.i); if (!e || e === P || !Array.isArray(d.o) || !Array.isArray(d.d)) return;
+    const w = W.list[d.w] || W.list.ar;
+    e.firedT = 0.8; e.muzzleT = 0.05;
+    const dist = Math.hypot(e.x - P.x, e.y - P.y, e.z - P.z);
+    Sfx.shot(w.sfx, Math.max(0, 1 - dist / 60) * 0.7);
+    const dl = Math.hypot(d.d[0], d.d[1], d.d[2]) || 1, dx = d.d[0] / dl, dy = d.d[1] / dl, dz = d.d[2] / dl;
+    const t = Math.min(isFinite(phys.rayBoxes(d.o[0], d.o[1], d.o[2], dx, dy, dz, 80)) ? phys.rayBoxes(d.o[0], d.o[1], d.o[2], dx, dy, dz, 80) : 80, 80);
+    const mz = muzzlePos(e, dx, dy, dz);
+    tracer(mz[0], mz[1], mz[2], d.o[0] + dx * t, d.o[1] + dy * t, d.o[2] + dz * t);
+  }
+
+  // 남(또는 방장의 봇)이 죽었다는 알림
+  function netDead(d) {
+    const v = entById(d.v), k = entById(d.k);
+    if (!v || v === P || !v.alive) return;
+    v.alive = false; v.hp = 0; v.deaths++;
+    if (k && k !== v) k.kills++;
+    const w = W.list[d.w] || W.list.ar;
+    if (k === P && k !== v) { match.kills++; Sfx.kill(); if (d.h) match.heads++; }
+    feed(k === v ? v.name + '  [' + w.name + ' 자폭]' : (k ? k.name : '?') + '  [' + w.name + (d.h ? ' · 헤드샷' : '') + ']  ' + v.name, k === P || v === P);
+    checkRoundEnd();
+  }
+
+  RivalNet.on('msg', netMsg);
+  RivalNet.on('left', (id, nick) => { // 경기 중 누가 나감
+    if (!NET.on) return;
+    const e = NET.ids[id]; if (e) { e.alive = false; e.mesh.root.visible = false; feed((nick || '?') + '님이 나갔어요', false); delete NET.ids[id]; const i = botsApi.bots.indexOf(e); if (i >= 0) { botsApi.bots.splice(i, 1); e.mesh.root.parent && e.mesh.root.parent.remove(e.mesh.root); } checkRoundEnd(); }
+  });
+  RivalNet.on('ended', (reason) => { // 방장이 나가는 등으로 경기가 끝남
+    if (!NET.on || match.phase === 'over') return;
+    match.phase = 'over'; leaveGame(); if (reason) RivalFriendly.toast(reason); // 방은 그대로 남아 있으니 방 화면으로
+  });
+  RivalNet.on('status', (ok) => { if (!ok && NET.on && match.phase !== 'over') { match.phase = 'over'; leaveGame(); RivalFriendly.toast('서버와 연결이 끊겨서 경기가 끝났어요'); } });
+  if (window.RivalFriendly) RivalFriendly.startNet = startNet;
+
   // 다른 창/탭으로 갔다 오면 키보드/버튼이 눌린 채로 남을 수 있어서 전부 해제
   const releaseInputs = () => { Object.keys(keys).forEach((k) => { keys[k] = false; }); inp.fire = false; inp.adsHold = false; joy.x = joy.y = 0; sbOpen = false; };
   window.addEventListener('blur', releaseInputs);
@@ -1257,7 +1501,7 @@
   // 주소 끝에 ?debug 를 붙였을 때만 테스트용으로 내부 상태를 노출
   if (DEBUG) {
     window.__rival = {
-      P, keys, inp, boxes, match, W, joy, get now() { return now; },
+      P, keys, inp, boxes, match, W, joy, NET, get now() { return now; },
       get guns() { return guns; }, get cur() { return cur; }, get bots() { return botsApi.bots; },
       all, switchTo, doReload, startRound, castRay, get nav() { return botsApi.nav; },
       get ads() { return adsT; }, botStats, get vm() { return vm; }, shop: RivalShop, get spec() { return specTarget; }, settings, get world() { return world; }, loadMap, get curMap() { return curMap; }, mem: () => ({ children: scene.children.length, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, nades: nades.length, smokes: smokes.length, blasts: blasts.length }), step: (n, dt) => { for (let i = 0; i < n; i++) update(dt); }, rangeStats, startRangeSession, resetRangeStats, nades, smokes, blasts, smoked, get sbOpen() { return sbOpen; },

@@ -1,4 +1,5 @@
 // MyRivals 서버: 정적 파일(게임) + 닉네임/리더보드 API 만 담당. 경기는 전부 브라우저에서 진행됨.
+const http = require('http');
 const express = require('express');
 const path = require('path');
 
@@ -12,10 +13,13 @@ app.use((req, res, next) => {       // 기본 보안 헤더
   next();
 });
 app.use(express.static(path.join(__dirname, 'public')));
-app.use('/api', require('./rival-server'));
+const api = require('./rival-server');
+app.use('/api', api);
 app.use('/api', (req, res) => res.status(404).json({ error: '없는 주소예요.' }));
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+const server = http.createServer(app);
+require('./rival-net').attach(server, { getNick: api.getNick }); // 친선전투(WebSocket /ws)
+server.listen(PORT, () => {
   console.log(`MyRivals 서버 실행 중: http://localhost:${PORT}`);
 });

@@ -370,13 +370,14 @@
 
     function spawn(opts) { // opts: { team, name, diff, x, z, yaw, primary }
       const D0 = DIFFS[opts.diff] || DIFFS.normal;
-      const L = !opts.dummy && opts.team === 'B' ? learnLevel(D0.key) : 0; // 학습은 적(B팀)만
+      const L = !opts.dummy && !opts.remote && !opts.noLearn && opts.team === 'B' ? learnLevel(D0.key) : 0; // 학습은 적(B팀)만 (친선전투/원격 캐릭터는 제외)
       const pid = opts.primary || D0.pool[Math.floor(Math.random() * D0.pool.length)];
       const m = RivalModels.humanoid(opts.team, pid, opts.name);
       m.tag.visible = opts.team === 'A' && !opts.dummy; // 이름표는 아군만(과녁 제외)
       const sd = Math.floor(Math.random() * 1e9);
       const b = {
-        isBot: true, id: 'bot' + Math.random().toString(36).slice(2, 7), name: opts.name, team: opts.team,
+        isBot: !opts.human, id: opts.netId || 'bot' + Math.random().toString(36).slice(2, 7), name: opts.name, team: opts.team,
+        remote: !!opts.remote, human: !!opts.human, persist: !!opts.persist, tx: opts.x, ty: 1.7, tz: opts.z, tyaw: opts.yaw, tpitch: 0, eye: 1.7, // remote: 친선전투에서 다른 기기가 조종하는 캐릭터(사람 또는 방장의 봇)
         x: opts.x, z: opts.z, y: 1.7, vy: 0, onGround: true, yaw: opts.yaw, pitch: 0,
         hp: 100, alive: true, firedT: 0, kills: 0, deaths: 0,
         diff: effDiff(D0, L), L, bursting: false, burstT: 0.2, tgtPrev: null, tgtSpeed: 0, hadSight: false,
@@ -399,13 +400,13 @@
     }
 
     // 라운드마다 봇을 지울 때 전용 재질/이름표 텍스처를 반납(공유 조각은 그대로 둠)
-    function clear() {
-      bots.forEach((b) => {
-        G.scene.remove(b.mesh.root);
-        b.mesh.torso.material.dispose();
-        b.mesh.tag.material.map.dispose(); b.mesh.tag.material.dispose();
-      });
-      bots.length = 0;
+    function dispose(b) {
+      G.scene.remove(b.mesh.root);
+      b.mesh.torso.material.dispose();
+      b.mesh.tag.material.map.dispose(); b.mesh.tag.material.dispose();
+    }
+    function clear(all) { // 기본: 라운드용 봇만 지움. 친선전투의 상대 사람(persist)은 라운드가 바뀌어도 남김. all=true 면 전부.
+      for (let i = bots.length - 1; i >= 0; i--) { if (all || !bots[i].persist) { dispose(bots[i]); bots.splice(i, 1); } }
       // 지나간 길 기록은 절반 가까이 옅게 남겨서 "지난 라운드와 다른 길"을 고르게 함
       for (const t of ['A', 'B']) { const a = traffic[t]; for (let i = 0; i < a.length; i++) a[i] *= 0.45; teamIntel[t] = null; laneSeq[t] = shuffle([-1, 0, 1]); laneN[t] = 0; }
       buildHeatMix();
@@ -729,6 +730,20 @@
       G.throwUtil(b, type, tx, tz);
     }
 
+    // 친선전투: 다른 기기가 보내온 위치로 부드럽게 따라감 (생각/이동은 그쪽 기기가 함)
+    function stepRemote(b, dt) {
+      const k = Math.min(1, dt * 14), ox = b.x, oz = b.z;
+      b.x += (b.tx - b.x) * k; b.y += (b.ty - b.y) * k; b.z += (b.tz - b.z) * k;
+      b.yaw += angDiff(b.yaw, b.tyaw) * k; b.pitch += (b.tpitch - b.pitch) * k;
+      b.moving = Math.hypot(b.x - ox, b.z - oz) / Math.max(dt, 1e-4) > 0.6;
+    }
+    // 받은 상태를 반영. snap=true 면 순간이동(라운드 시작/부활)
+    function setRemote(b, st, snap) {
+      b.tx = st.x; b.ty = st.y; b.tz = st.z; b.tyaw = st.yaw; b.tpitch = st.pitch; b.eye = st.eye || 1.7;
+      if (snap || Math.hypot(b.tx - b.x, b.tz - b.z) > 8) { b.x = b.tx; b.y = b.ty; b.z = b.tz; b.yaw = b.tyaw; b.pitch = b.tpitch; }
+    }
+    function revive(b) { b.alive = true; b.deadT = 0; b.hp = 100; b.mesh.root.rotation.x = 0; b.mesh.root.visible = true; b.mesh.tag.visible = b.team === 'A'; }
+
     // 사격장 과녁: 생각하지 않고 서 있거나 좌우로 왕복만 함 (항상 플레이어 쪽(+z)을 봄)
     function stepDummy(b, dt) {
       b.yaw = Math.PI;
@@ -752,8 +767,8 @@
           m.root.position.y = Math.min(0.15, b.deadT * 0.6); // 누운 몸이 바닥에 닿도록 살짝 띄움
           continue;
         }
-        if (b.dummy) stepDummy(b, dt); else if (live) think(b, dt, now); else { b.moving = false; phys.gravity(b, dt, false); }
-        m.root.position.set(b.x, b.y - 1.7, b.z);
+        if (b.remote) stepRemote(b, dt); else if (b.dummy) stepDummy(b, dt); else if (live) think(b, dt, now); else { b.moving = false; phys.gravity(b, dt, false); }
+        m.root.position.set(b.x, b.y - (b.eye || 1.7), b.z);
         m.root.rotation.y = b.yaw;
         if (b.moving) b.walkPhase += dt * 9;
         const sw = b.moving ? Math.sin(b.walkPhase) * 0.7 : 0;
@@ -790,7 +805,7 @@
     }
     function learnInfo(diffKey) { return { L: learnLevel(diffKey), cap: LEARN_CAP[diffKey] || 0, matches: profile.matches }; }
 
-    return { bots, spawn, clear, update, DIFFS, NAMES, PRIMARIES, nav: { walk, findPath, nodeH, nodeN, K }, beginMatch, observePlayer, observeShot, roundEnd, endMatch, learnInfo, _hot: hotspots, _traffic: traffic };
+    return { bots, spawn, clear, update, setRemote, revive, DIFFS, NAMES, PRIMARIES, nav: { walk, findPath, nodeH, nodeN, K }, beginMatch, observePlayer, observeShot, roundEnd, endMatch, learnInfo, _hot: hotspots, _traffic: traffic };
   }
 
   // 기억 보기/지우기 (로비 화면용)

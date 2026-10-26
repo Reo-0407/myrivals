@@ -187,3 +187,36 @@ details .row { margin-top: 10px; }
 .coin-line { margin: 0; color: #ffd24a; font-weight: 800; font-size: 20px; }
 #coin-badge { color: #ffd24a; margin-left: 6px; }
 .btn:disabled { background: #2a3350; color: #8a94ad; cursor: default; }
+
+/* ---- 친선전투 ---- */
+.btn.small { width: auto; padding: 8px 14px; font-size: 14px; border-radius: 8px; }
+.btn:disabled { background: #3a4156; color: #8a93a8; cursor: not-allowed; }
+.fr-wrap { width: min(980px, 100%); display: flex; flex-direction: column; gap: 10px; }
+.fr-head { display: flex; align-items: center; gap: 12px; }
+.fr-head h2 { margin: 0; flex: 1; }
+.fr-cols { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+.fr-left { flex: 1 1 260px; max-width: 360px; }
+.fr-right { flex: 2 1 380px; }
+.fr-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #0f1422; border-radius: 8px; margin-bottom: 6px; }
+.fr-row b { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#fr-codein { flex: 1; padding: 8px; border-radius: 8px; border: 2px solid #2a3350; background: #0f1422; color: #fff; font-size: 16px; text-transform: uppercase; letter-spacing: 3px; }
+.fr-codeline { display: flex; align-items: center; gap: 10px; }
+.fr-codeline b { font-size: 24px; letter-spacing: 4px; color: #ffcc00; flex: 1; }
+.fr-teams { display: flex; align-items: stretch; gap: 8px; }
+.fr-teams > div:not(.vs) { flex: 1; }
+.fr-teams .vs { align-self: center; font-weight: 800; color: #9aa6c0; }
+.fr-teams h3.ta { color: #5aa2ff; } .fr-teams h3.tb { color: #ff6b78; }
+.fr-slot { min-height: 40px; padding: 8px 10px; margin-bottom: 6px; border-radius: 8px; background: #0f1422; border: 2px dashed #2a3350; color: #7d879f; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+.fr-slot.filled { border: 2px solid #3a4770; color: #fff; background: #1a2238; }
+.fr-slot.can { cursor: pointer; border-color: #5aa2ff; color: #cfe1ff; }
+.fr-slot b { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fr-tools { display: flex; gap: 4px; }
+.mini { padding: 2px 6px; border: 0; border-radius: 6px; background: #2a3350; color: #fff; cursor: pointer; font-size: 13px; }
+.fr-set { display: flex; flex-direction: column; gap: 8px; }
+.fr-chat { display: flex; flex-direction: column; gap: 6px; }
+#fr-chatlog { height: 90px; overflow-y: auto; background: #0f1422; border-radius: 8px; padding: 6px 8px; font-size: 13px; color: #cdd5e6; }
+#fr-chatin { flex: 1; padding: 8px; border-radius: 8px; border: 2px solid #2a3350; background: #0f1422; color: #fff; font-size: 14px; }
+.fr-toast { position: sticky; top: 0; z-index: 5; background: #ffcc00; color: #222; padding: 8px 12px; border-radius: 8px; font-weight: 700; text-align: center; }
+#invite-toast { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; gap: 8px; width: min(420px, 94vw); }
+#invite-toast .inv { background: #1c2540; border: 2px solid #5aa2ff; border-radius: 10px; padding: 10px; display: flex; align-items: center; gap: 8px; font-size: 14px; }
+#invite-toast .inv span { flex: 1; }

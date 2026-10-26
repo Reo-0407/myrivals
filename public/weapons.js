@@ -27,6 +27,8 @@
     heal:    { name: '치료 음료', slot: 'utility', util: 'heal', rpm: 60, mag: 1, heal: 40, move: 1.0, desc: '체력 40 회복 (가득 차 있으면 못 써요)' },
   };
 
+  Object.keys(list).forEach((k) => { list[k].id = k; }); // 각 무기 정의에 자기 이름표를 달아 둠 (친선전투에서 "어떤 무기로 쐈는지" 전달할 때 씀)
+
   const bySlot = (slot) => Object.keys(list).filter((k) => list[k].slot === slot);
 
   // ---- 발사 상태 머신 ----

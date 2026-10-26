@@ -129,4 +129,7 @@ router.use((err, req, res, next) => {
   res.status(err && err.status === 413 ? 413 : 400).json({ error: '잘못된 요청이에요.' });
 });
 
+// 친선전투 서버(rival-net.js)가 접속자 닉네임을 확인할 때 씀
+router.getNick = (id) => (isValidId(id) && players[id] ? players[id].nick : null);
+
 module.exports = router;

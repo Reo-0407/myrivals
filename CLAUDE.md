@@ -3,12 +3,12 @@
 웹 FPS 미니게임(브라우저에서 AI 봇과 대전). 풀빌라 파티 게임과는 **별개 프로젝트**다.
 
 ## 기술 스택
-- 서버: Node.js + Express (정적 파일 + 닉네임/리더보드 API만). Socket.io 없음.
+- 서버: Node.js + Express (정적 파일 + 닉네임/리더보드 API) + `ws` WebSocket(친선전투). Socket.io 없음.
 - 클라이언트: 순수 HTML/CSS/JS, 빌드 과정 없음. 3D는 Three.js(cdnjs CDN r128).
 - 효과음은 Web Audio로 직접 합성. 음원/그림 파일 없음.
 
 ## 파일
-`server.js`, `rival-server.js`(API, `data/rival.json` 저장), `public/`(index.html, main.js, weapons.js, maps.js, map-village.js, map-harbor.js, map-snow.js, models.js, bots.js, physics.js, audio.js, style.css). 자세한 설명은 README.md.
+`server.js`, `rival-server.js`(API, `data/rival.json` 저장), `rival-net.js`(친선전투 WebSocket 서버), `public/`(index.html, net.js, friendly.js, main.js, weapons.js, maps.js, map-village.js, map-harbor.js, map-snow.js, models.js, bots.js, physics.js, audio.js, style.css). 자세한 설명은 README.md.
 
 ## 최근 추가
 - 로비 `🎯 사격장`(`match.mode==='range'`): 과녁은 `bots.js`의 `dummy` 봇. 라운드/타이머 규칙은 꺼짐.
@@ -30,6 +30,7 @@
 - 활(`bow`, 보조무기): 한 발 장전식 히트스캔(화살 궤적은 트레이서). 봇은 안 씀. 모델 `models.js`, 소리 `audio.js` GUN.bow.
 - 봇 길찾기는 층 구분(`bots.js`): 칸마다 설 수 있는 높이 목록(`nodeH/nodeN`, K=5), 점=(칸,높이). 오르막은 `climbOk`가 실제 `phys.tryMove`로 걸어 올라가는지 시험(계단 옆에서 비스듬히 붙으면 막히는 것 방지). 위층 목적지는 흐트러뜨리지 않음. 계단/층 이동 구간은 지점을 정확히(0.6m) 밟아야 다음으로 넘어감. 창고 2층 계단 위 통로를 넓히려고 난간을 얇게 함(`maps.js`).
 - AI 학습은 라운드마다 계속 쌓임(져도 줄지 않음). 지옥은 조준 오차/빗나감 확률을 높여 쉬워짐, 기관총은 약하고 퍼지게 조정, 기관단총 14/점사 24.
+- 친선전투(온라인): `rival-net.js`가 접속자 목록/방(코드·초대·팀 A/B·설정)/경기 중 메시지 중계(`relay`)만 담당. 경기 규칙·AI 봇·라운드 진행은 **방장 브라우저**(main.js `NET.host`)가 하고, 각자는 자기 위치/체력을 `st`(15회/초)로 보냄. 원격 캐릭터는 `bots.js`의 `remote` 엔티티(`spawn({remote,human,persist,netId})`, `setRemote`, `revive`, `clear(true)`). 팀은 방 기준 A/B 이지만 화면에서는 항상 내 팀=A(`lt()/rtOf()`). 메시지: st(상태) bs(방장 봇 상태) fire(발사 연출) hit(피격 알림→주인이 체력 깎음) dead(사망) nade(수류탄) rdy/rs/ph/er/ov(준비·라운드시작·단계·라운드끝·경기끝). 피해는 던진/쏜 쪽이 계산(클라이언트 신뢰, 치트 방지 없음). 친선전투는 기록/코인/AI학습 없음.
 - 보안: 저장소/목록 객체는 `Object.create(null)`("__proto__" 오염 방지), 서버는 id 형식 검증. 설정/지갑은 불러올 때 값 검사.
 
 ## 규칙

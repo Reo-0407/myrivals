@@ -21,6 +21,50 @@
     <p id="nick-err" class="err"></p>
   </section>
 
+  <!-- 2-1) 친선전투: 접속 중인 사람 초대 + 방(팀/설정) -->
+  <section id="screen-friendly" class="screen hidden">
+    <div class="fr-wrap">
+      <div class="fr-head"><button id="fr-back" class="btn ghost small">← 로비</button><h2>🤝 친선전투</h2><span id="fr-status" class="hint"></span></div>
+      <div id="fr-toast" class="fr-toast hidden"></div>
+      <div class="fr-cols">
+        <div class="panel fr-left">
+          <h3>접속 중인 플레이어</h3>
+          <div id="fr-online"></div>
+          <p id="fr-online-empty" class="hint">지금 접속해 있는 다른 사람이 없어요. 친구에게 주소를 알려 주세요!</p>
+          <h3>방 코드로 들어가기</h3>
+          <div class="row"><input id="fr-codein" maxlength="4" placeholder="코드 4글자" autocomplete="off"><button id="fr-joincode" class="btn small">입장</button></div>
+        </div>
+        <div class="panel fr-right">
+          <div id="fr-noroom">
+            <p>방을 만들고 친구를 초대해서 같이 싸워 보세요. 팀을 나누고, AI를 켜거나 끌 수도 있어요.</p>
+            <button id="fr-create" class="btn">방 만들기</button>
+          </div>
+          <div id="fr-room" class="hidden">
+            <div class="fr-codeline">방 코드 <b id="fr-code"></b> <button id="fr-leave" class="btn ghost small">방 나가기</button></div>
+            <div class="fr-teams">
+              <div><h3 class="ta">🔵 A팀</h3><div id="fr-teamA"></div></div>
+              <div class="vs">VS</div>
+              <div><h3 class="tb">🔴 B팀</h3><div id="fr-teamB"></div></div>
+            </div>
+            <div class="fr-set">
+              <div class="row"><label for="fr-map">맵</label><select id="fr-map"></select></div>
+              <div class="row"><label for="fr-size">팀 인원</label><select id="fr-size"><option value="1">1 vs 1</option><option value="2">2 vs 2</option><option value="3">3 vs 3</option><option value="4">4 vs 4</option></select></div>
+              <div class="row"><label for="fr-wins">몇 선승</label><select id="fr-wins"><option value="1">1선승</option><option value="2">2선승</option><option value="3">3선승</option><option value="5">5선승</option><option value="7">7선승</option><option value="10">10선승</option></select></div>
+              <div class="row"><label for="fr-ai">🤖 AI로 빈 자리 채우기</label><input id="fr-ai" type="checkbox"></div>
+              <div class="row"><label for="fr-diff">AI 난이도</label><select id="fr-diff"><option value="rookie">입문</option><option value="easy">쉬움</option><option value="normal">보통</option><option value="hard">어려움</option><option value="insane">지옥</option></select></div>
+              <div class="row"><label for="fr-gear">🎲 무기 랜덤 (라운드마다)</label><input id="fr-gear" type="checkbox"></div>
+            </div>
+            <button id="fr-start" class="btn hidden">▶ 경기 시작</button>
+            <p id="fr-wait" class="hint hidden">방장이 경기를 시작하길 기다리는 중… (팀 칸을 눌러 팀을 바꿀 수 있어요)</p>
+            <div class="fr-chat"><div id="fr-chatlog"></div><div class="row"><input id="fr-chatin" maxlength="80" placeholder="채팅" autocomplete="off"><button id="fr-chatsend" class="btn small">보내기</button></div></div>
+          </div>
+        </div>
+      </div>
+      <p class="hint">친선전투는 기록/코인이 쌓이지 않아요. 방장의 기기가 경기 진행과 AI를 맡아서, 방장 인터넷이 느리면 모두 느려질 수 있어요.</p>
+    </div>
+  </section>
+  <div id="invite-toast" class="hidden"></div>
+
   <!-- 2) 로비 -->
   <section id="screen-lobby" class="screen hidden">
     <div class="lobby">
@@ -56,6 +100,7 @@
         <p id="ai-mem" class="hint"></p>
         <button id="play-btn" class="btn">매치 시작</button>
         <button id="range-btn" class="btn ghost">🎯 사격장 (연습)</button>
+        <button id="friendly-btn" class="btn ghost">🤝 친선전투 <b id="friendly-badge"></b></button>
         <button id="shop-btn" class="btn ghost">🛒 상점 <b id="coin-badge"></b></button>
 
         <h3>로드아웃 (들고 갈 무기)</h3>
@@ -172,6 +217,8 @@
   <script src="physics.js"></script>
   <script src="audio.js"></script>
   <script src="bots.js"></script>
+  <script src="net.js"></script>
+  <script src="friendly.js"></script>
   <script src="main.js"></script>
 </body>
 </html>
