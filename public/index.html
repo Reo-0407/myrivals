@@ -47,9 +47,11 @@
               <div><h3 class="tb">🔴 B팀</h3><div id="fr-teamB"></div></div>
             </div>
             <div class="fr-set">
+              <div class="row"><label for="fr-mode">모드</label><select id="fr-mode"><option value="round">라운드제 (전멸시키면 승리)</option><option value="tdm">팀 데스매치 (죽어도 다시 나와요)</option></select></div>
               <div class="row"><label for="fr-map">맵</label><select id="fr-map"></select></div>
               <div class="row"><label for="fr-size">팀 인원</label><select id="fr-size"><option value="1">1 vs 1</option><option value="2">2 vs 2</option><option value="3">3 vs 3</option><option value="4">4 vs 4</option></select></div>
-              <div class="row"><label for="fr-wins">몇 선승</label><select id="fr-wins"><option value="1">1선승</option><option value="2">2선승</option><option value="3">3선승</option><option value="5">5선승</option><option value="7">7선승</option><option value="10">10선승</option></select></div>
+              <div class="row hidden" id="fr-limitrow"><label for="fr-limit">목표 킬 수</label><select id="fr-limit"><option value="10">10킬</option><option value="20">20킬</option><option value="30">30킬</option><option value="50">50킬</option></select></div>
+              <div class="row" id="fr-winsrow"><label for="fr-wins">몇 선승</label><select id="fr-wins"><option value="1">1선승</option><option value="2">2선승</option><option value="3">3선승</option><option value="5">5선승</option><option value="7">7선승</option><option value="10">10선승</option></select></div>
               <div class="row"><label for="fr-ai">🤖 AI로 빈 자리 채우기</label><input id="fr-ai" type="checkbox"></div>
               <div class="row"><label for="fr-diff">AI 난이도</label><select id="fr-diff"><option value="rookie">입문</option><option value="easy">쉬움</option><option value="normal">보통</option><option value="hard">어려움</option><option value="insane">지옥</option></select></div>
               <div class="row"><label for="fr-gear">🎲 무기 랜덤 (라운드마다)</label><input id="fr-gear" type="checkbox"></div>

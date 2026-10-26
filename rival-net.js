@@ -7,6 +7,8 @@ const ID_RE = /^[A-Za-z0-9_-]{8,40}$/;
 const MAP_RE = /^[a-z0-9_-]{1,24}$/;
 const WINS = [1, 2, 3, 5, 7, 10];
 const DIFFS = ['rookie', 'easy', 'normal', 'hard', 'insane'];
+const MODES = ['round', 'tdm']; // round: 라운드제(전멸시키면 승리) / tdm: 팀 데스매치(죽어도 다시 나오고, 먼저 목표 킬 수를 채우면 승리)
+const LIMITS = [10, 20, 30, 50];
 const MAX_TEAM = 4;
 const INVITE_TTL = 60 * 1000;
 
@@ -31,7 +33,7 @@ function attach(httpServer, { getNick }) {
   }
 
   // ---- 방 ----
-  const defaults = () => ({ map: 'warehouse', size: 2, wins: 5, ai: true, diff: 'normal', gear: false });
+  const defaults = () => ({ map: 'warehouse', size: 2, wins: 5, ai: true, diff: 'normal', gear: false, mode: 'round', limit: 20 });
   function newCode() {
     const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     for (let tries = 0; tries < 50; tries++) {
@@ -83,6 +85,8 @@ function attach(httpServer, { getNick }) {
     if (typeof s.ai === 'boolean') out.ai = s.ai;
     if (DIFFS.includes(s.diff)) out.diff = s.diff;
     if (typeof s.gear === 'boolean') out.gear = s.gear;
+    if (MODES.includes(s.mode)) out.mode = s.mode;
+    if (LIMITS.includes(s.limit)) out.limit = s.limit;
     if (humans(r, 'A') > out.size || humans(r, 'B') > out.size) return null; // 한 팀 사람 수보다 작은 인원으로는 못 바꿈
     return out;
   }

@@ -49,9 +49,9 @@
     const mapSel = $('fr-map'); mapSel.innerHTML = '';
     window.RivalMap.list().forEach((m) => { const o = el('option', '', m.name); o.value = m.id; mapSel.appendChild(o); });
     const push = () => N.setSettings({
-      map: $('fr-map').value, size: +$('fr-size').value, wins: +$('fr-wins').value, ai: $('fr-ai').checked, diff: $('fr-diff').value, gear: $('fr-gear').checked,
+      map: $('fr-map').value, size: +$('fr-size').value, wins: +$('fr-wins').value, ai: $('fr-ai').checked, diff: $('fr-diff').value, gear: $('fr-gear').checked, mode: $('fr-mode').value, limit: +$('fr-limit').value,
     });
-    ['fr-map', 'fr-size', 'fr-wins', 'fr-diff'].forEach((id) => { $(id).onchange = push; });
+    ['fr-map', 'fr-size', 'fr-wins', 'fr-diff', 'fr-mode', 'fr-limit'].forEach((id) => { $(id).onchange = push; });
     ['fr-ai', 'fr-gear'].forEach((id) => { $(id).onchange = push; });
   }
 
@@ -91,7 +91,9 @@
     const host = iAmHost(), s = r.settings;
     $('fr-map').value = s.map; $('fr-size').value = String(s.size); $('fr-wins').value = String(s.wins);
     $('fr-ai').checked = s.ai; $('fr-diff').value = s.diff; $('fr-gear').checked = s.gear;
-    ['fr-map', 'fr-size', 'fr-wins', 'fr-ai', 'fr-diff', 'fr-gear'].forEach((id) => { $(id).disabled = !host; });
+    $('fr-mode').value = s.mode; $('fr-limit').value = String(s.limit);
+    $('fr-winsrow').classList.toggle('hidden', s.mode === 'tdm'); $('fr-limitrow').classList.toggle('hidden', s.mode !== 'tdm');
+    ['fr-map', 'fr-size', 'fr-wins', 'fr-ai', 'fr-diff', 'fr-gear', 'fr-mode', 'fr-limit'].forEach((id) => { $(id).disabled = !host; });
     $('fr-diff').disabled = !host || !s.ai;
     $('fr-start').classList.toggle('hidden', !host);
     $('fr-wait').classList.toggle('hidden', host);

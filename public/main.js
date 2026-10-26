@@ -414,6 +414,7 @@
     if (t === P) { match.deaths++; inp.adsToggle = false; inp.crouch = false; $('btn-ads').classList.remove('on'); $('btn-crouch').classList.remove('on'); P.flashT = 0; }
     feed(a === t ? t.name + '  [' + w.name + ' 자폭]' : a.name + '  [' + w.name + (head ? ' · 헤드샷' : '') + ']  ' + t.name, a === P || t === P);
     if (match.net && !t.remote) relay('all', 'dead', { v: idOf(t), k: idOf(a), h: head ? 1 : 0, w: w.id }); // 내(또는 방장의 봇) 죽음은 주인이 모두에게 알림
+    if (match.tdm) { if (t === P) NET.respT = 3; tdmScore(t, a); }
     checkRoundEnd();
   }
 
@@ -467,12 +468,12 @@
   // =====================================================================
   // 매치 / 라운드
   // =====================================================================
-  const match = { net: false, gear: false, shots: 0, hits: 0, heads: 0, wins: 5, mode: 'match', phase: 'idle', round: 0, score: { A: 0, B: 0 }, timer: 0, phaseT: 0, teamSize: 2, diff: 'normal', kills: 0, deaths: 0, lastCount: 99 };
+  const match = { net: false, tdm: false, limit: 20, gear: false, shots: 0, hits: 0, heads: 0, wins: 5, mode: 'match', phase: 'idle', round: 0, score: { A: 0, B: 0 }, timer: 0, phaseT: 0, teamSize: 2, diff: 'normal', kills: 0, deaths: 0, lastCount: 99 };
 
   // =====================================================================
   // 친선전투(온라인) 공용 상태: 방장의 기기가 라운드 진행/AI 봇을 맡고, 모두가 자기 캐릭터의 위치·발사·피격을 서로에게 알려 줌
   // =====================================================================
-  const NET = { on: false, host: false, myTeam: 'A', room: null, settings: null, ids: Object.create(null), sendT: 0, bsT: 0, phT: 0, ready: new Set(), waiting: false, readyT: 0 };
+  const NET = { respT: 0, on: false, host: false, myTeam: 'A', room: null, settings: null, ids: Object.create(null), sendT: 0, bsT: 0, phT: 0, ready: new Set(), waiting: false, readyT: 0 };
   const lt = (rt) => (rt === NET.myTeam ? 'A' : 'B');                               // 방 팀(A/B) → 내 화면 기준 (우리편 = A)
   const rtOf = (l) => (l === 'A' ? NET.myTeam : NET.myTeam === 'A' ? 'B' : 'A');    // 내 화면 기준 → 방 팀
   const idOf = (e) => (e === P ? myId : e.id);
@@ -480,9 +481,17 @@
   const scoreRoom = () => { const s = { A: 0, B: 0 }; s[NET.myTeam] = match.score.A; s[NET.myTeam === 'A' ? 'B' : 'A'] = match.score.B; return s; };
   const relay = (to, t, d) => { if (NET.on) RivalNet.relay(to, t, d); };
   const r2 = (v) => Math.round(v * 100) / 100;
+  const TDM_TIME = 300; // 팀 데스매치 제한 시간(초)
+  // 팀 데스매치: 상대 팀을 처치하면 우리 팀 점수. 점수는 방장이 세고 모두에게 알림
+  function tdmScore(v, k) {
+    if (!NET.host || match.phase !== 'live' || !k || k === v || k.team === v.team) return;
+    match.score[k.team]++;
+    broadcastPhase();
+    if (match.score[k.team] >= match.limit) finishMatch();
+  }
 
   function startMatch() {
-    match.mode = 'match'; match.net = false; $('res-again').classList.remove('hidden'); $('res-lobby').textContent = '로비로';
+    match.mode = 'match'; match.net = false; match.tdm = false; $('res-again').classList.remove('hidden'); $('res-lobby').textContent = '로비로';
     P.name = myNick || '나';
     match.teamSize = settings.mode; match.diff = settings.diff; match.wins = winRounds(); // 매치 도중에는 선승 수가 바뀌지 않게 시작할 때 고정
     match.round = 0; match.score.A = match.score.B = 0; match.kills = match.deaths = 0; match.shots = match.hits = match.heads = 0; match.phase = 'ready';
@@ -594,6 +603,7 @@
   function checkRoundEnd(timeUp) {
     if (match.phase !== 'live' || match.mode === 'range') return;
     if (match.net && !NET.host) return; // 친선전투: 라운드 승패는 방장이 정함
+    if (match.tdm) return; // 팀 데스매치는 전멸로 끝나지 않음
     const a = aliveCount('A'), b = aliveCount('B');
     if (b === 0) endRound('A', '적을 모두 처치!');
     else if (a === 0) endRound('B', '팀이 전멸했어요');
@@ -620,10 +630,10 @@
       match.phaseT -= dt;
       const c = Math.ceil(match.phaseT);
       if (c !== match.lastCount && c > 0) { match.lastCount = c; Sfx.beep(false); setBanner(c + '<small>라운드 ' + match.round + '</small>', 0); }
-      if (match.phaseT <= 0 && (!match.net || NET.host)) { match.phase = 'live'; match.timer = ROUND_TIME; Sfx.beep(true); setBanner('시작!', 0.8); if (match.net) broadcastPhase(); }
+      if (match.phaseT <= 0 && (!match.net || NET.host)) { match.phase = 'live'; match.timer = match.tdm ? TDM_TIME : ROUND_TIME; Sfx.beep(true); setBanner('시작!', 0.8); if (match.net) broadcastPhase(); }
     } else if (match.phase === 'live' && match.mode !== 'range') {
       match.timer -= dt;
-      if (match.timer <= 0) { match.timer = 0; if (!match.net || NET.host) checkRoundEnd(true); }
+      if (match.timer <= 0) { match.timer = 0; if (match.tdm) { if (NET.host) finishMatch(); } else if (!match.net || NET.host) checkRoundEnd(true); }
     } else if (match.phase === 'between') {
       match.phaseT -= dt;
       if (match.phaseT <= 0 && (!match.net || NET.host)) {
@@ -1018,7 +1028,7 @@
     setText('sc-me', String(match.score.A)); setText('sc-foe', String(match.score.B));
     const t = Math.max(0, Math.ceil(match.timer));
     setText('sc-timer', match.phase === 'live' || match.phase === 'between' ? Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0') : '--');
-    setText('sc-round', '라운드 ' + Math.max(1, match.round) + ' · ' + match.wins + '선승 · 생존 ' + aliveCount('A') + ' vs ' + aliveCount('B'));
+    setText('sc-round', match.tdm ? '팀 데스매치 · 목표 ' + match.limit + '킬 · ' + aliveCount('A') + ' vs ' + aliveCount('B') + ' 생존' : '라운드 ' + Math.max(1, match.round) + ' · ' + match.wins + '선승 · 생존 ' + aliveCount('A') + ' vs ' + aliveCount('B'));
     // 맞춤 표시 / 피격 화면 / 배너 시간
     if (hmT > 0) { hmT -= dt; if (hmT <= 0) $('hitmark').className = ''; }
     dmgT = Math.max(0, dmgT - dt * 1.4); $('dmgflash').style.opacity = dmgT.toFixed(2);
@@ -1033,7 +1043,7 @@
       const acc = rangeStats.shots ? Math.round(rangeStats.hits / rangeStats.shots * 100) : 0;
       setText('range-hud', '🎯 명중률 ' + acc + '% (' + rangeStats.hits + '/' + rangeStats.shots + ') · 헤드샷 ' + rangeStats.heads + ' · 처치 ' + rangeStats.kills + ' · 마지막 ' + rangeStats.last + (isTouch ? '  [탭: 초기화]' : '  [T: 초기화]'));
     }
-    if (!P.alive && match.phase === 'live' && !inRange) { if (!hudCache.dead) { hudCache.dead = 1; setBanner('사망<small>' + (botsApi.bots.some((b) => b.team === 'A' && b.alive) ? '아군 시점으로 관전 중이에요' : '라운드가 끝날 때까지 기다려 주세요') + '</small>', 3); } } else hudCache.dead = 0;
+    if (!P.alive && match.phase === 'live' && !inRange) { if (!hudCache.dead) { hudCache.dead = 1; setBanner('사망<small>' + (match.tdm ? '3초 뒤 다시 나와요' : botsApi.bots.some((b) => b.team === 'A' && b.alive) ? '아군 시점으로 관전 중이에요' : '라운드가 끝날 때까지 기다려 주세요') + '</small>', 3); } } else hudCache.dead = 0;
   }
 
   // =====================================================================
@@ -1145,7 +1155,7 @@
     if (botsApi) { botsApi.clear(true); clearThrown(); clearRange(); }
     const wasNet = NET.on, finished = match.phase === 'over';
     if (wasNet) { NET.on = false; NET.waiting = false; if (!finished) RivalNet.leave(); } // 경기 중에 나가면 방에서도 나감, 경기가 끝난 뒤면 방으로 돌아감
-    match.phase = 'idle'; match.mode = 'match'; match.net = false; $('res-again').classList.remove('hidden');
+    match.phase = 'idle'; match.mode = 'match'; match.net = false; match.tdm = false; $('res-again').classList.remove('hidden');
     $('result').classList.add('hidden'); showOverlayHidden();
     if (wasNet && finished && RivalNet.room) { show('screen-friendly'); RivalFriendly.show(); } else enterLobby();
   }
@@ -1301,7 +1311,7 @@
     $('touch-ui').classList.toggle('hidden', !isTouch);
     camera.fov = settings.fov; camera.updateProjectionMatrix();
     mobilePlaying = false; $('btn-arm').classList.add('hidden');
-    match.mode = 'match'; match.net = true; match.gear = !!s.gear;
+    match.mode = 'match'; match.net = true; match.gear = !!s.gear; match.tdm = s.mode === 'tdm'; match.limit = s.limit || 20;
     match.gear = false; setupGuns(); match.gear = !!s.gear; // 라운드가 시작되기 전에도 손에 들 무기가 있어야 화면 갱신이 안 깨짐
     P.name = myNick || '나'; P.kills = P.deaths = 0;
     match.teamSize = s.size; match.diff = s.diff; match.wins = s.wins;
@@ -1353,6 +1363,12 @@
     relay('all', 'rs', { r: match.round, a: assign, b: roster });
     broadcastPhase();
   }
+  const pickSpawn = (roomTeam) => { const l = world.spawns[roomTeam]; return l[Math.floor(Math.random() * l.length)]; };
+  function respawnSelf() {
+    const p = pickSpawn(NET.myTeam);
+    placePlayer(p); P.flashT = 0; setupGuns(); setBanner('');
+    relay('all', 'rv', { id: myId, x: p.x, z: p.z, yaw: p.yaw });
+  }
   function placePlayer(p) {
     spawnPoint = p; inp.crouch = false; $('btn-crouch').classList.remove('on');
     Object.assign(P, { x: p.x, y: EYE, eye: EYE, z: p.z, vy: 0, onGround: true, yaw: p.yaw, pitch: 0, hp: 100, alive: true, firedT: 0 });
@@ -1387,7 +1403,7 @@
     if (document.pointerLockElement) document.exitPointerLock();
     const a = match.score.A, b = match.score.B;
     $('res-title').textContent = a > b ? '🏆 승리!' : a < b ? '패배' : '무승부';
-    $('res-score').textContent = '라운드 ' + a + ' : ' + b + (match.shots ? ' · 명중률 ' + Math.round(100 * match.hits / match.shots) + '% · 헤드샷 ' + match.heads : '');
+    $('res-score').textContent = (match.tdm ? '팀 킬 ' : '라운드 ') + a + ' : ' + b + (match.shots ? ' · 명중률 ' + Math.round(100 * match.hits / match.shots) + '% · 헤드샷 ' + match.heads : '');
     $('res-stats').textContent = '이번 경기: ' + match.kills + '킬 ' + match.deaths + '데스 · 친선전투라서 기록/코인은 없어요';
     $('res-coins').textContent = '';
     $('res-again').classList.add('hidden'); $('res-lobby').textContent = '방으로 돌아가기';
@@ -1398,6 +1414,10 @@
   function netTick(dt) {
     NET.sendT -= dt;
     if (NET.sendT <= 0) { NET.sendT = 0.066; relay('all', 'st', { x: r2(P.x), y: r2(P.y), z: r2(P.z), a: r2(P.yaw), p: r2(P.pitch), e: r2(P.eye), h: P.hp, l: P.alive ? 1 : 0 }); }
+    if (match.tdm && match.phase === 'live') { // 팀 데스매치: 죽으면 3초 뒤 같은 팀 자리에서 다시 나옴
+      if (!P.alive) { NET.respT -= dt; if (NET.respT <= 0) respawnSelf(); }
+      if (NET.host) botsApi.bots.forEach((b) => { if (!b.remote && b.isBot && !b.alive && b.deadT > 3) { const p = pickSpawn(b.team === 'A' ? NET.myTeam : rtOf('B')); botsApi.respawn(b, p); relay('all', 'rv', { id: b.id, x: p.x, z: p.z, yaw: p.yaw }); } });
+    }
     if (!NET.host) return;
     NET.bsT -= dt;
     if (NET.bsT <= 0 && botsApi.bots.length) {
@@ -1441,6 +1461,7 @@
         nades.push({ w, type: w.util, x: d.p[0], y: d.p[1], z: d.p[2], vx: d.v[0], vy: d.v[1], vz: d.v[2], t: w.fuse, m: mesh, owner });
         break;
       }
+      case 'rv': { const e = entById(d.id); if (e && e !== P && e.remote) { botsApi.revive(e); botsApi.setRemote(e, { x: d.x, y: EYE, z: d.z, yaw: d.yaw, pitch: 0, eye: EYE }, true); } break; }
       case 'rdy': if (NET.host) NET.ready.add(from); break;
       case 'rs': if (!NET.host) netRoundStart(d); break;
       case 'ph': {
@@ -1478,7 +1499,7 @@
     const w = W.list[d.w] || W.list.ar;
     if (k === P && k !== v) { match.kills++; Sfx.kill(); if (d.h) match.heads++; }
     feed(k === v ? v.name + '  [' + w.name + ' 자폭]' : (k ? k.name : '?') + '  [' + w.name + (d.h ? ' · 헤드샷' : '') + ']  ' + v.name, k === P || v === P);
-    checkRoundEnd();
+    if (match.tdm) tdmScore(v, k); else checkRoundEnd();
   }
 
   RivalNet.on('msg', netMsg);

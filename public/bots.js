@@ -744,6 +744,15 @@
     }
     function revive(b) { b.alive = true; b.deadT = 0; b.hp = 100; b.mesh.root.rotation.x = 0; b.mesh.root.visible = true; b.mesh.tag.visible = b.team === 'A'; }
 
+    // 팀 데스매치: 죽은 봇을 같은 자리에서 새로 살려냄
+    function respawn(b, p) {
+      b.alive = true; b.hp = 100; b.deadT = 0; b.x = p.x; b.z = p.z; b.y = 1.7; b.vy = 0; b.yaw = p.yaw; b.pitch = 0; b.onGround = true;
+      b.mesh.root.rotation.x = 0; b.mesh.root.visible = true; b.mesh.tag.visible = b.team === 'A' && !b.dummy;
+      b.target = null; b.targetVisible = false; b.lastSeen = null; b.route = []; b.path = null; b.holding = false; b.pauseT = 0.3;
+      b.flinchT = 0; b.miss = null; b.recoil = 0; b.firedT = 0; b.blindT = 0; b.age = 0; b.hurtFrom = null; b.bursting = false;
+      b.gun = W.create(b.gun.id);
+    }
+
     // 사격장 과녁: 생각하지 않고 서 있거나 좌우로 왕복만 함 (항상 플레이어 쪽(+z)을 봄)
     function stepDummy(b, dt) {
       b.yaw = Math.PI;
@@ -805,7 +814,7 @@
     }
     function learnInfo(diffKey) { return { L: learnLevel(diffKey), cap: LEARN_CAP[diffKey] || 0, matches: profile.matches }; }
 
-    return { bots, spawn, clear, update, setRemote, revive, DIFFS, NAMES, PRIMARIES, nav: { walk, findPath, nodeH, nodeN, K }, beginMatch, observePlayer, observeShot, roundEnd, endMatch, learnInfo, _hot: hotspots, _traffic: traffic };
+    return { bots, spawn, clear, update, setRemote, revive, respawn, DIFFS, NAMES, PRIMARIES, nav: { walk, findPath, nodeH, nodeN, K }, beginMatch, observePlayer, observeShot, roundEnd, endMatch, learnInfo, _hot: hotspots, _traffic: traffic };
   }
 
   // 기억 보기/지우기 (로비 화면용)
