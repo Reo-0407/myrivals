@@ -11,7 +11,7 @@
   //   head 머리를 노릴 확률   turn 조준 회전 속도(rad/s)   strafe 좌우 이동 정도   dmg 봇 데미지 배율
   //   fov 시야 반각(라디안)   hear 총소리를 알아채는 거리(m)   burstOn/Off 연사 시간/쉬는 시간 범위(초)   pool 들고 나오는 주무기 후보
   //   wob 조준 흔들림(도)   pMiss 한 번 쏠 때마다 일부러 빗나가는 연사가 될 확률   miss 빗나갈 때 어긋나는 각도 범위(도)   rec 연사 반동 배율
-  const ALL = ['ar', 'ar', 'burst', 'smg', 'smg', 'shotgun', 'sniper', 'lmg'];
+  const ALL = ['ar', 'ar', 'burst', 'smg', 'smg', 'shotgun', 'sniper', 'lmg', 'dmr']; // 어려움/지옥 후보 (dmr 은 산 사람과 상관없이 봇이 사용. 연발 샷건은 좌우로 움직여도 90% 맞아서 제외)
   const DIFFS = {
     rookie: { name: '입문',   react: 1.5,  aim: 4.5, moveAim: 1.0,  head: 0.0,  turn: 1.8,  strafe: 0.15, dmg: 0.5,  fov: 0.95, hear: 12, burstOn: [0.25, 0.5], burstOff: [0.9, 1.7], pool: ['ar', 'smg'],                    wob: 2.2,  pMiss: 0.6,  miss: [4, 9],     rec: 1.0 },
     easy:   { name: '쉬움',   react: 1.0,  aim: 3.6, moveAim: 0.7,  head: 0.02, turn: 2.4,  strafe: 0.35, dmg: 0.65, fov: 1.0,  hear: 18, burstOn: [0.3, 0.7],  burstOff: [0.6, 1.3], pool: ['ar', 'smg', 'burst'],           wob: 1.8,  pMiss: 0.5,  miss: [3.5, 8],   rec: 0.9 },

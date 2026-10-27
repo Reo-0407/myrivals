@@ -47,6 +47,16 @@
     { kind: 'xs', id: 'xs_x',     name: 'X자',        price: 120, shape: 'x' },
     { kind: 'xs', id: 'xs_tri',   name: '세모',       price: 160, shape: 'tri' },
   ];
+  // 닉네임 앞에 붙는 칭호 (로비/결과 화면에 표시)
+  const TITLES = [
+    { kind: 'ti', id: 'ti_none',   name: '칭호 없음',  price: 0,   text: '' },
+    { kind: 'ti', id: 'ti_rookie', name: '🌱 새싹',     price: 60,  text: '🌱 새싹' },
+    { kind: 'ti', id: 'ti_sharp',  name: '🎯 명사수',   price: 200, text: '🎯 명사수' },
+    { kind: 'ti', id: 'ti_fire',   name: '🔥 불꽃',     price: 300, text: '🔥 불꽃' },
+    { kind: 'ti', id: 'ti_ghost',  name: '👻 유령',     price: 400, text: '👻 유령' },
+    { kind: 'ti', id: 'ti_dragon', name: '🐉 용',       price: 700, text: '🐉 용' },
+    { kind: 'ti', id: 'ti_king',   name: '👑 전설',     price: 1500, text: '👑 전설' },
+  ];
   // 무기 잠금 해제: 가격(price)이 있는 무기들 (weapons.js 의 표에서 자동으로 만듦)
   const WEAPONS = Object.keys(window.RivalWeapons.list).filter((k) => window.RivalWeapons.list[k].price).map((k) => {
     const w = window.RivalWeapons.list[k];
@@ -58,14 +68,14 @@
     { kind: 'boost', id: 'bo_shield', name: '출석 보호권',      price: 200, add: { shield: 1 }, desc: '하루 출석을 깜빡해도 연속 출석이 끊기지 않아요 (1장)' },
   ];
   const byId = Object.create(null); // 프로토타입 없는 객체: 저장값에 "__proto__" 같은 이름이 있어도 물건으로 착각하지 않음
-  SKINS.concat(XHS, SHAPES, WEAPONS, BOOSTS).forEach((i) => { byId[i.id] = i; });
-  const FREE = { skin: 'classic', xh: 'xh_white', xs: 'xs_cross' };
+  SKINS.concat(XHS, SHAPES, TITLES, WEAPONS, BOOSTS).forEach((i) => { byId[i.id] = i; });
+  const FREE = { skin: 'classic', xh: 'xh_white', xs: 'xs_cross', ti: 'ti_none' };
 
   // ---- 지갑 (저장/불러오기) ----
   const KEY = 'rival_wallet';
   let wallet = load();
   function load() {
-    const w = { coins: 0, owned: [FREE.skin, FREE.xh, FREE.xs], equip: { skin: FREE.skin, xh: FREE.xh, xs: FREE.xs }, boost: { coin2: 0, shield: 0 } };
+    const w = { coins: 0, owned: [FREE.skin, FREE.xh, FREE.xs, FREE.ti], equip: { skin: FREE.skin, xh: FREE.xh, xs: FREE.xs, ti: FREE.ti }, boost: { coin2: 0, shield: 0 } };
     try {
       const raw = JSON.parse(localStorage.getItem(KEY) || 'null');
       if (raw && typeof raw === 'object') {
@@ -73,7 +83,7 @@
         if (Array.isArray(raw.owned)) raw.owned.forEach((id) => { if (byId[id] && byId[id].kind !== 'boost' && !w.owned.includes(id)) w.owned.push(id); });
         if (raw.boost && typeof raw.boost === 'object') ['coin2', 'shield'].forEach((k) => { const v = raw.boost[k]; if (Number.isFinite(v)) w.boost[k] = Math.max(0, Math.min(999, Math.floor(v))); });
         const eq = raw.equip || {};
-        ['skin', 'xh', 'xs'].forEach((k) => { if (byId[eq[k]] && byId[eq[k]].kind === k && w.owned.includes(eq[k])) w.equip[k] = eq[k]; });
+        ['skin', 'xh', 'xs', 'ti'].forEach((k) => { if (byId[eq[k]] && byId[eq[k]].kind === k && w.owned.includes(eq[k])) w.equip[k] = eq[k]; });
       }
     } catch (e) {}
     return w;
@@ -102,6 +112,7 @@
   }
   // 무기를 쓸 수 있는가: 가격이 없는 무기는 처음부터, 가격이 있는 무기는 산 뒤에
   const hasWeapon = (wid) => { const w = window.RivalWeapons.list[wid]; return !!w && (!w.price || wallet.owned.includes('wp_' + wid)); };
+  const equippedTitle = () => byId[wallet.equip.ti] || byId[FREE.ti];
   const equippedShape = () => byId[wallet.equip.xs] || byId[FREE.xs];
   function equip(id) {
     const it = byId[id];
@@ -133,12 +144,12 @@
   let opts = { getWeapon: () => 'ar', onChange: () => {}, equipWeapon: () => {}, isWeaponEquipped: () => false };
   let tab = 'skin', selected = null, pv = null, isOpen = false;
   const css = (n) => '#' + n.toString(16).padStart(6, '0');
-  const TAB_ITEMS = () => ({ skin: SKINS, xh: XHS, xs: SHAPES, weapon: WEAPONS, boost: BOOSTS })[tab] || [];
+  const TAB_ITEMS = () => ({ skin: SKINS, xh: XHS, xs: SHAPES, ti: TITLES, weapon: WEAPONS, boost: BOOSTS })[tab] || [];
   const SLOT_NAME = { primary: '주무기', secondary: '보조', melee: '근접', utility: '유틸' };
 
   function swatch(it) {
     if (it.kind === 'xh') return it.color;
-    if (it.kind === 'xs' || it.kind === 'weapon') return 'linear-gradient(135deg,#2a2d34,#454a55)';
+    if (it.kind === 'xs' || it.kind === 'weapon' || it.kind === 'ti') return 'linear-gradient(135deg,#2a2d34,#454a55)';
     if (it.kind === 'boost') return 'linear-gradient(135deg,#1f6fb8,#3fd0ff)';
     if (!it.main) return 'linear-gradient(135deg,#2a2d34,#454a55)';
     if (it.rainbow) return 'linear-gradient(135deg,#f33,#fc3,#3f3,#3cf,#93f)';
@@ -154,6 +165,7 @@
       const sw = document.createElement('span'); sw.className = 'sw'; sw.style.background = swatch(it);
       if (it.kind === 'xs') sw.textContent = SHAPE_ICON[it.shape] || '';
       if (it.kind === 'weapon') sw.textContent = SLOT_NAME[it.slot] || '';
+      if (it.kind === 'ti') sw.textContent = it.text ? it.text.split(' ')[0] : '—';
       if (it.kind === 'boost') sw.textContent = it.id === 'bo_coin2' ? '💰×2' : '🛡️';
       const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = it.name;
       const st = document.createElement('small');
@@ -180,7 +192,7 @@
     else if (it.exclusive) { btn.textContent = '연속 출석 ' + it.exclusive + '일 달성하면 받아요'; btn.disabled = true; btn.onclick = null; }
     else if (wallet.coins >= it.price) { btn.textContent = '구매하고 장착 (💰 ' + it.price + ')'; btn.onclick = () => { if (buy(it.id).ok) equipItem(it); render(); }; }
     else { btn.textContent = '코인이 부족해요 (💰 ' + it.price + ')'; btn.disabled = true; btn.onclick = null; }
-    $('shop-msg').textContent = it.kind === 'skin' ? '무기 몸체 색이 바뀌어요 (손에 든 모든 무기에 적용)' : it.kind === 'xh' ? '화면 가운데 조준점의 색이 바뀌어요' : it.kind === 'xs' ? '화면 가운데 조준점의 모양이 바뀌어요' : (SLOT_NAME[it.slot] || '') + ' · ' + (it.desc || '');
+    $('shop-msg').textContent = it.kind === 'skin' ? '무기 몸체 색이 바뀌어요 (손에 든 모든 무기에 적용)' : it.kind === 'xh' ? '화면 가운데 조준점의 색이 바뀌어요' : it.kind === 'xs' ? '화면 가운데 조준점의 모양이 바뀌어요' : it.kind === 'ti' ? '로비와 결과 화면에서 닉네임 앞에 붙어요' : (SLOT_NAME[it.slot] || '') + ' · ' + (it.desc || '');
   }
   function equipItem(it) { if (it.kind === 'weapon') opts.equipWeapon(it.weapon); else equip(it.id); opts.onChange(); }
 
@@ -272,5 +284,5 @@
 
     // 로드아웃 화면에서 잠긴 무기를 눌렀을 때: 상점의 무기 탭을 그 무기로 열어 줌
   function openWeapon(wid) { tab = 'weapon'; selected = 'wp_' + wid; open(); }
-  window.RivalShop = { SKINS, XHS, SHAPES, WEAPONS, BOOSTS, init, open, close, owns, buy, equip, addCoins, reward, rewardFor, refreshBadge, equippedSkin, equippedXh, equippedShape, hasWeapon, openWeapon, grant, addBoost, boosts: () => wallet.boost, useShield, coins: () => wallet.coins, get lastBoosted() { return lastBoosted; }, _wallet: () => wallet, _pv: () => pv };
+  window.RivalShop = { SKINS, XHS, SHAPES, WEAPONS, BOOSTS, init, open, close, owns, buy, equip, addCoins, reward, rewardFor, refreshBadge, equippedSkin, equippedXh, equippedShape, equippedTitle, TITLES, hasWeapon, openWeapon, grant, addBoost, boosts: () => wallet.boost, useShield, coins: () => wallet.coins, get lastBoosted() { return lastBoosted; }, _wallet: () => wallet, _pv: () => pv };
 })();

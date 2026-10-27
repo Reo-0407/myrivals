@@ -206,7 +206,7 @@
   }
 
   function enterLobby() {
-    $('lobby-nick').textContent = myNick;
+    const tt = RivalShop.equippedTitle().text; $('lobby-nick').textContent = (tt ? tt + ' ' : '') + myNick;
     $('my-stats').textContent = myStats ? levelText(myStats) + ' · 내 전적: ' + myStats.wins + '승 ' + myStats.losses + '패 · ' + myStats.kills + '킬 ' + myStats.deaths + '데스' : '';
     show('screen-lobby');
     if (window.RivalNet) RivalNet.connect(myId); // 친선전투 서버에 접속 (접속자 목록/초대 받기)
@@ -1600,7 +1600,7 @@
   // ---- 시작 ----
   Sfx.setVolume(settings.vol);
   if (window.RivalDaily) RivalDaily.init();
-  RivalShop.init({ getWeapon: () => settings.loadout.primary, onChange: applyCrosshair, equipWeapon: (wid) => { settings.loadout[W.list[wid].slot] = wid; saveSettings(); renderLoadout(); }, isWeaponEquipped: (wid) => settings.loadout[W.list[wid].slot] === wid });
+  RivalShop.init({ getWeapon: () => settings.loadout.primary, onChange: () => { applyCrosshair(); const tt = RivalShop.equippedTitle().text; $('lobby-nick').textContent = (tt ? tt + ' ' : '') + myNick; }, equipWeapon: (wid) => { settings.loadout[W.list[wid].slot] = wid; saveSettings(); renderLoadout(); }, isWeaponEquipped: (wid) => settings.loadout[W.list[wid].slot] === wid });
   applyCrosshair();
   initSettingsUI();
   if (myNick) {

@@ -8,7 +8,7 @@
 - 효과음은 Web Audio로 직접 합성. 음원/그림 파일 없음.
 
 ## 파일
-`server.js`, `rival-server.js`(API, `data/rival.json` 저장), `rival-net.js`(친선전투 WebSocket 서버), `public/`(index.html, daily.js, net.js, friendly.js, main.js, weapons.js, maps.js, map-village.js, map-harbor.js, map-snow.js, models.js, bots.js, physics.js, audio.js, style.css). 자세한 설명은 README.md.
+`server.js`, `rival-server.js`(API, `data/rival.json` 저장), `rival-net.js`(친선전투 WebSocket 서버), `public/`(index.html, daily.js, net.js, friendly.js, main.js, weapons.js, maps.js, map-village.js, map-harbor.js, map-snow.js, map-ruins.js, models.js, bots.js, physics.js, audio.js, style.css). 자세한 설명은 README.md.
 
 ## 최근 추가
 - 로비 `🎯 사격장`(`match.mode==='range'`): 과녁은 `bots.js`의 `dummy` 봇. 라운드/타이머 규칙은 꺼짐.
@@ -16,7 +16,7 @@
 - 난이도 기본값: 폰 `입문`/PC `쉬움`. 설정 버전(`SETTINGS_VER`)을 올리면 저장된 난이도·보조 설정이 새 기본값으로 초기화됨.
 - 아군 봇은 적보다 한 단계 높은 난이도로 나온다.
 
-- 맵은 `RivalMap.register`로 등록(`maps.js`에 창고, `map-village.js`에 사막 마을, `map-harbor.js`에 항구 부두, `map-snow.js`에 설원 기지). `main.js`의 `loadMap(id)`가 맵 교체 + 봇 길찾기 격자 재생성. 사격장은 항상 창고 맵.
+- 맵은 `RivalMap.register`로 등록(`maps.js`에 창고, `map-village.js`에 사막 마을, `map-harbor.js`에 항구 부두, `map-snow.js`에 설원 기지, `map-ruins.js`에 정글 유적). `main.js`의 `loadMap(id)`가 맵 교체 + 봇 길찾기 격자 재생성. 사격장은 항상 창고 맵.
 - 앉기: `P.eye`(1.7↔1.2). 물리(`physics.js`)와 판정은 캐릭터의 `eye` 값을 사용(없으면 1.7).
 - 폰을 세로로 들면 게임 일시정지(`running()`), 창 전환 시 입력 해제.
 
@@ -35,6 +35,8 @@
 - 상점 탭: 무기 스킨 / 무기 / 조준점 색 / 조준점 모양(`xs_*`, CSS `#xh.shape-*`) / 부스터(`bo_coin2` 5경기 코인 2배, `bo_shield` 출석 보호권). 한정 스킨(`streak7/14/30`, `exclusive`)은 출석으로만. 지갑 `boost:{coin2,shield}`.
 - 출석/미션(`daily.js`, localStorage `rival_daily`): 7일 주기 보상 + 연속 7/14/30일 한정 스킨, 하루 빠지면 초기화(보호권 1장이 1일 보호), 오늘의 미션 3개(날짜로 고정, kills/heads/wins/matches/nades), `RivalDaily.add(stat)`를 main.js가 호출. 새 날 로비 입장 시 출석창 자동.
 - 최적화: 맵은 `maps.js mergeStatic`으로 같은 재질끼리 하나의 메시로 합침, 캐릭터는 `models.js bake`로 정점 색 메시 몇 개로 합침(그리기 호출 ~300→~40), `all()/enemiesOf()`는 프레임당 한 번만 계산(`G.touch`로 무효화), 그래픽 설정(자동/높음/낮음 — 자동은 프레임 시간으로 해상도 조절 `autoQuality`), 효과음 음량 설정.
+- 칭호(`shop.js` TITLES, kind `ti`): 닉네임 앞에 붙는 꾸미기. 상점 칭호 탭, 로비 `lobby-nick`에 표시.
+- 봇 무기: 어려움/지옥 후보에 지정사수소총 `dmr` 포함(연발 샷건은 좌우로 움직여도 ~90% 맞아 제외).
 - 레벨: `main.js levelText`가 서버 전적(킬 10/승 100/패 30점)에서 계산해 로비·결과 화면에 표시(Lv L 필요 점수 50·(L-1)²). 저장 데이터 없음.
 - 보안: 저장소/목록 객체는 `Object.create(null)`("__proto__" 오염 방지), 서버는 id 형식 검증. 설정/지갑은 불러올 때 값 검사.
 
