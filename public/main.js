@@ -383,7 +383,7 @@
       } else if (r.wall) spark(px, py, pz, 0xffc060);
       tracer(mz[0], mz[1], mz[2], px, py, pz);
     }
-    if (match.net && (isMe || (shooter.isBot && !shooter.remote))) relay('all', 'fire', { i: idOf(shooter), o: [r2(ox), r2(oy), r2(oz)], d: [r2(dx), r2(dy), r2(dz)], w: w.id }); // 소리/총알 궤적 보여주기용
+    if (match.net && (isMe || (shooter.isBot && !shooter.remote)) && (!shooter.fireRelT || now - shooter.fireRelT > 0.08)) { shooter.fireRelT = now; relay('all', 'fire', { i: idOf(shooter), o: [r2(ox), r2(oy), r2(oz)], d: [r2(dx), r2(dy), r2(dz)], w: w.id }); } // 소리/총알 궤적 보여주기용 (연사는 초당 12번까지만 알림: 메시지가 너무 많으면 중요한 피격/사망 알림이 밀릴 수 있음)
     if (isMe) { rangeStats.shots++; if (anyHit) rangeStats.hits++; if (match.mode === 'match') { match.shots++; if (anyHit) match.hits++; } }
     else if (shooter.isBot && shooter.team === 'B') { botStats.shots++; if (hitMe) botStats.hitsOnMe++; }
   }
@@ -1168,6 +1168,12 @@
   $('res-lobby').onclick = leaveGame;
   $('res-again').onclick = () => { $('result').classList.add('hidden'); startMatch(); };
 
+  // 친선전투: 마우스가 풀려 있는 채로 화면을 누르면 다시 게임에 잡음 (안 그러면 시점 이동/발사가 안 돼서 "서로 안 쏴져요"가 됨)
+  document.addEventListener('click', () => {
+    if (!NET.on || isTouch || $('game').classList.contains('hidden') || document.pointerLockElement || match.phase === 'over') return;
+    if (!$('overlay').classList.contains('hidden') || !$('result').classList.contains('hidden')) return;
+    try { const pr = $('c').requestPointerLock(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {}
+  });
   document.addEventListener('pointerlockchange', () => {
     if ($('game').classList.contains('hidden')) return;
     if (document.pointerLockElement) hideOverlay();
@@ -1328,6 +1334,12 @@
     last = 0; cancelAnimationFrame(raf); raf = requestAnimationFrame(loop);
   }
 
+  // 라운드가 시작됐는데 아직 "입장"을 안 눌러서 마우스가 게임에 잡혀 있지 않으면(= 조준/발사가 안 됨) 안내창을 남겨 둠
+  function netOverlay() {
+    const active = isTouch ? mobilePlaying : !!document.pointerLockElement;
+    if (active) hideOverlay(); else showOverlay('🤝 경기가 시작됐어요!', isTouch ? '화면을 눌러 입장하세요' : '버튼을 눌러 입장하세요 (마우스가 게임에 잡혀야 조준하고 쏠 수 있어요)', '▶ 눌러서 입장');
+  }
+
   function netReady() { // "입장" 버튼: 나는 준비됨. 방장은 모두 준비되면(최대 20초) 첫 라운드를 시작
     setBanner(NET.host ? '다른 사람을 기다리는 중…' : '방장이 시작하길 기다리는 중…', 0);
     if (NET.host) { NET.ready.add(myId); NET.waiting = true; NET.readyT = 0; } else RivalNet.relay('host', 'rdy', {});
@@ -1387,7 +1399,7 @@
       botsApi.setRemote(e, { x: a.x, y: EYE, z: a.z, yaw: a.yaw, pitch: 0, eye: EYE }, true);
     });
     (d.b || []).forEach((b) => botsApi.spawn({ netId: b.id, name: b.name, team: lt(b.team), remote: true, diff: 'normal', x: b.x, z: b.z, yaw: b.yaw, primary: W.list[b.g] ? b.g : 'ar' }));
-    hideOverlay();
+    netOverlay();
   }
   function netRoundEnd(d) {
     match.phase = 'between'; match.phaseT = BETWEEN;
@@ -1430,7 +1442,7 @@
     if (NET.waiting && match.phase === 'ready') {
       NET.readyT += dt;
       const need = ((RivalNet.room && RivalNet.room.members) || NET.room.members).length;
-      if (NET.ready.size >= need || NET.readyT > 20) { NET.waiting = false; startRoundNet(); hideOverlay(); }
+      if (NET.ready.size >= need || NET.readyT > 10) { NET.waiting = false; startRoundNet(); netOverlay(); }
     }
   }
 

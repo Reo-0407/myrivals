@@ -4,7 +4,7 @@
   const N = window.RivalNet;
   const DIFF_NAMES = { rookie: '입문', easy: '쉬움', normal: '보통', hard: '어려움', insane: '지옥' };
   const ST = { idle: '대기 중', inroom: '방에 있음', ingame: '경기 중' };
-  let opened = false;
+  let opened = false, pendingInvite = null;
   const F = { onBack: null, startNet: null };
 
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }; // textContent: 닉네임에 HTML이 있어도 글자로만 표시됨
@@ -35,8 +35,8 @@
       row.appendChild(el('span', 'hint', ST[p.st] || ''));
       const r = myRoom();
       const b = el('button', 'btn small', '초대');
-      b.disabled = !(r && r.state === 'lobby') || p.st !== 'idle';
-      b.onclick = () => N.invite(p.id);
+      b.disabled = (r && r.state !== 'lobby') || p.st !== 'idle';
+      b.onclick = () => { if (r) N.invite(p.id); else { pendingInvite = p.id; N.createRoom(); } }; // 방이 없으면 방을 만들면서 바로 초대
       row.appendChild(b);
       box.appendChild(row);
     });
@@ -83,6 +83,8 @@
     if (!r) return;
     buildSettings();
     $('fr-code').textContent = r.code;
+    const nA = countTeam(r, 'A'), nB = countTeam(r, 'B');
+    $('fr-hint').textContent = nA + nB < 2 ? '친구를 초대하거나 코드를 알려 주세요.' : nA && nB ? '👊 서로 다른 팀이라 서로 싸워요.' : '🤝 모두 같은 팀이라 서로 못 쏴요. 서로 싸우려면 한 명이 반대 팀 칸을 눌러 옮기세요.';
     ['A', 'B'].forEach((team) => {
       const col = $('fr-team' + team); col.innerHTML = '';
       const ms = r.members.filter((m) => m.team === team);
@@ -140,7 +142,7 @@
   $('fr-chatin').onkeydown = (e) => { if (e.key === 'Enter') $('fr-chatsend').onclick(); };
 
   N.on('online', render);
-  N.on('room', render);
+  N.on('room', (r) => { if (r && pendingInvite) { N.invite(pendingInvite); pendingInvite = null; } render(); });
   N.on('status', render);
   N.on('invite', renderInvites);
   N.on('toast', toast);

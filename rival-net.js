@@ -71,8 +71,8 @@ function attach(httpServer, { getNick }) {
     }
     pushRoom(r);
   }
-  function freeTeam(r, prefer) {
-    const order = prefer === 'B' ? ['B', 'A'] : ['A', 'B'];
+  function freeTeam(r) { // 새로 들어오는 사람은 사람이 더 적은 팀으로 (친구 한 명이 들어오면 자동으로 반대 팀 → 바로 서로 싸울 수 있음)
+    const order = humans(r, 'A') <= humans(r, 'B') ? ['A', 'B'] : ['B', 'A'];
     for (const t of order) if (humans(r, t) < r.settings.size) return t;
     return null;
   }
@@ -197,11 +197,11 @@ function attach(httpServer, { getNick }) {
 
   wss.on('connection', (ws) => {
     let c = null;
-    const bucket = { n: 200, t: Date.now() };
+    const bucket = { n: 400, t: Date.now() };
     ws.isAlive = true;
     ws.on('pong', () => { ws.isAlive = true; });
     ws.on('message', (data) => {
-      const now = Date.now(); bucket.n = Math.min(200, bucket.n + (now - bucket.t) * 0.12); bucket.t = now; // 초당 120개, 한 번에 최대 200개
+      const now = Date.now(); bucket.n = Math.min(400, bucket.n + (now - bucket.t) * 0.25); bucket.t = now; // 초당 250개, 한 번에 최대 400개 (방장은 봇 상태/발사까지 보내서 많음)
       if (--bucket.n < 0) return;
       let m; try { m = JSON.parse(data.toString()); } catch (e) { return; }
       if (!m || typeof m !== 'object' || typeof m.k !== 'string') return;
