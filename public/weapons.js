@@ -4,6 +4,7 @@
 //   mag      탄창 크기                     reload 재장전 시간(초)   spread  퍼짐 각도(도) [허리사격, 정조준]
 //   recoil   발사 때 화면이 위로 튀는 각도(도)   range 데미지 감소 거리(m) [온전한 거리, 최소 데미지가 되는 거리]
 //   fov      정조준 시 시야각          move   이동 속도 배율     auto    꾹 누르면 연사
+//   price    코인으로 잠금 해제하는 무기의 가격 (없으면 처음부터 쓸 수 있음)
 (function () {
   const list = {
     // ---- 주무기 ----
@@ -13,17 +14,24 @@
     shotgun: { name: '샷건', slot: 'primary', dmg: 10, head: 1.5, rpm: 70, mag: 6, reload: 0.5, startup: 0.45, shell: 0.5, pellets: 8, spread: [4.2, 3.2], recoil: 2.4, range: [10, 24], fov: 66, move: 0.95, sfx: 'shotgun', desc: '한 발씩 장전(0.5초), 근거리 한방' },
     sniper:  { name: '저격총', slot: 'primary', dmg: 90, head: 2, rpm: 42, mag: 5, reload: 2.8, spread: [7, 0.02], recoil: 3.2, range: [200, 300], fov: 20, move: 0.85, scope: true, sfx: 'sniper', desc: '헤드샷 즉사, 조준 필수' },
     lmg:     { name: '기관총', slot: 'primary', dmg: 14, head: 1.7, rpm: 700, mag: 100, reload: 5.2, spread: [2.5, 1.2], recoil: 0.75, range: [26, 65], fov: 62, move: 0.72, auto: true, sfx: 'lmg', desc: '탄은 100발이지만 약하고 퍼지고 느려요. 재장전도 길어요' },
+    dmr:     { name: '지정사수소총', slot: 'primary', dmg: 48, head: 2, rpm: 160, mag: 12, reload: 2.4, spread: [1.9, 0.1], recoil: 1.5, range: [70, 160], fov: 36, move: 0.9, sfx: 'dmr', price: 350, desc: '한 발씩 쏘는 중장거리 소총. 3발이면 쓰러지고 헤드샷은 거의 즉사' },
+    ashotgun:{ name: '연발 샷건', slot: 'primary', dmg: 8, head: 1.5, rpm: 200, mag: 10, reload: 3.0, spread: [4.8, 3.6], recoil: 1.6, pellets: 7, range: [8, 20], fov: 66, move: 0.92, auto: true, sfx: 'ashotgun', price: 450, desc: '꾹 누르면 연사되는 샷건. 아주 가까울 때 무서워요' },
     // ---- 보조무기 ----
     pistol:  { name: '권총', slot: 'secondary', dmg: 18, head: 2, rpm: 360, mag: 15, reload: 1.5, spread: [1.3, 0.35], recoil: 0.6, range: [25, 55], fov: 64, move: 1.0, sfx: 'pistol', desc: '한 번 누를 때 한 발' },
     revolver:{ name: '리볼버', slot: 'secondary', dmg: 55, head: 2, rpm: 120, mag: 6, reload: 2.5, spread: [1.0, 0.25], recoil: 2.0, range: [40, 80], fov: 56, move: 1.0, sfx: 'revolver', desc: '느리지만 두 방이면 쓰러져요' },
     bow:     { name: '활', slot: 'secondary', dmg: 70, head: 2, rpm: 48, mag: 1, reload: 1.0, spread: [1.6, 0.05], recoil: 0.9, range: [70, 130], fov: 48, move: 1.0, sfx: 'bow', desc: '한 발씩 시위를 당겨요. 정조준하면 정확해요. 머리는 즉사' },
+    mpistol: { name: '기관권총', slot: 'secondary', dmg: 11, head: 1.8, rpm: 780, mag: 22, reload: 1.5, spread: [2.0, 1.0], recoil: 0.4, range: [14, 35], fov: 70, move: 1.05, auto: true, sfx: 'smg', price: 250, desc: '보조무기인데 연사! 가까이서 쓰기 좋아요' },
     // ---- 근접무기 ----
     knife:   { name: '칼', slot: 'melee', melee: true, dmg: 40, head: 1, rpm: 130, mag: 0, reload: 0, range: [2.3, 2.3], move: 1.15, auto: true, sfx: 'swing', desc: '빠르고 이동이 가장 빨라요' },
     axe:     { name: '도끼', slot: 'melee', melee: true, dmg: 75, head: 1, rpm: 55, mag: 0, reload: 0, range: [2.7, 2.7], move: 1.0, sfx: 'swing', desc: '느리지만 두 번이면 끝' },
+    katana:  { name: '일본도', slot: 'melee', melee: true, dmg: 55, head: 1, rpm: 100, mag: 0, reload: 0, range: [2.6, 2.6], move: 1.12, sfx: 'swing', price: 300, desc: '빠르고 길어요. 두 번이면 끝' },
+    hammer:  { name: '망치', slot: 'melee', melee: true, dmg: 95, head: 1, rpm: 38, mag: 0, reload: 0, range: [2.5, 2.5], move: 0.95, sfx: 'swing', price: 300, desc: '아주 느리지만 한 번 맞으면 거의 쓰러져요' },
     // ---- 유틸리티 (한 라운드에 1개, 쓰면 직전 무기로 자동 복귀) ----
     frag:    { name: '수류탄', slot: 'utility', util: 'frag', dmg: 110, rpm: 60, mag: 1, fuse: 1.8, radius: 6, move: 1.0, desc: '1.8초 뒤 폭발, 반경 6m (나도 맞아요)' },
     flash:   { name: '섬광탄', slot: 'utility', util: 'flash', rpm: 60, mag: 1, fuse: 1.2, radius: 25, move: 1.0, desc: '쳐다보는 적의 시야를 하얗게 (나도 쳐다보면 눈이 멀어요)' },
     smoke:   { name: '연막탄', slot: 'utility', util: 'smoke', rpm: 60, mag: 1, fuse: 1.0, radius: 3.4, move: 1.0, desc: '10초 동안 연기로 시야를 가려요' },
+    boost:   { name: '아드레날린', slot: 'utility', util: 'boost', rpm: 60, mag: 1, boost: 7, move: 1.0, price: 150, desc: '7초 동안 이동 속도 +35%' },
+    armor:   { name: '방탄 조끼', slot: 'utility', util: 'armor', rpm: 60, mag: 1, armor: 50, move: 1.0, price: 200, desc: '방어막 50: 체력보다 먼저 닳아요' },
     heal:    { name: '치료 음료', slot: 'utility', util: 'heal', rpm: 60, mag: 1, heal: 40, move: 1.0, desc: '체력 40 회복 (가득 차 있으면 못 써요)' },
   };
 

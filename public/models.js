@@ -40,6 +40,20 @@
       ['b', .03, .16, .05, 0, 0, -.3, WOOD], ['b', .02, .1, .03, 0, .12, -.3, WOOD], ['b', .02, .1, .03, 0, -.12, -.3, WOOD],
       ['b', .016, .1, .03, 0, .22, -.26, WOOD], ['b', .016, .1, .03, 0, -.22, -.26, WOOD], ['b', .012, .08, .03, 0, .3, -.2, WOOD], ['b', .012, .08, .03, 0, -.3, -.2, WOOD],
       ['b', .004, .62, .004, 0, 0, -.12, 0xe8e4d4], ['b', .008, .008, .5, 0, .02, -.36, 0xdfe3e8], ['b', .02, .02, .05, 0, .02, -.64, METAL], ['b', .03, .012, .04, 0, .02, -.14, ACC]] },
+    dmr: { tip: 0.95, grip: [0, -0.09, -0.02], fore: [0, -0.05, -0.45], parts: [
+      ['b', .06, .09, .34, 0, 0, -.2, DARK], ['b', .065, .07, .26, 0, -.005, -.5, MID], ['c', .02, .4, 0, .008, -.78, DARK, true], ['b', .034, .034, .06, 0, .008, -.99, DARK],
+      ['b', .035, .05, .12, 0, .07, -.2, DARK], ['b', .03, .03, .1, 0, .095, -.2, LIGHT], ['b', .045, .1, .06, 0, -.1, -.26, MID], ['b', .05, .11, .24, 0, -.015, .16, OLIVE], ['b', .04, .09, .05, 0, -.085, .0, DARK], ['b', .012, .02, .03, 0, .05, -.7, METAL]] },
+    ashotgun: { tip: 0.78, grip: [0, -0.09, 0.0], fore: [0, -0.05, -0.4], parts: [
+      ['b', .07, .09, .32, 0, 0, -.16, DARK], ['c', .024, .5, 0, .02, -.56, METAL, true], ['c', .02, .42, 0, -.02, -.52, METAL, true], ['b', .075, .06, .2, 0, -.045, -.45, MID],
+      ['b', .06, .14, .1, 0, -.12, -.2, DARK], ['b', .05, .11, .24, 0, -.03, .13, DARK], ['b', .04, .09, .05, 0, -.08, .0, DARK], ['b', .01, .02, .01, 0, .05, -.8, ACC]] },
+    mpistol: { tip: 0.34, grip: [0, -0.07, 0.0], fore: [0, -0.06, -0.08], parts: [
+      ['b', .04, .05, .24, 0, .012, -.12, DARK], ['b', .036, .03, .2, 0, -.02, -.1, MID], ['b', .035, .13, .05, 0, -.09, -.02, DARK], ['b', .032, .1, .045, 0, -.1, -.14, DARK], ['b', .012, .012, .02, 0, .042, -.24, ACC], ['b', .016, .016, .02, 0, .04, -.03, METAL]] },
+    katana: { tip: 0, grip: [0, 0, -0.03], fore: null, parts: [
+      ['b', .012, .05, .62, 0, 0, -.42, 0xe6eaf0], ['b', .006, .012, .6, 0, -.022, -.42, 0x9aa0aa], ['b', .06, .02, .06, 0, 0, -.1, ACC], ['b', .03, .03, .2, 0, -.004, -.0, 0x2a2f3a], ['b', .034, .034, .03, 0, -.004, .1, ACC]] },
+    hammer: { tip: 0, grip: [0, 0, -0.1], fore: null, parts: [
+      ['b', .03, .03, .6, 0, 0, -.22, WOOD], ['b', .09, .11, .16, 0, .02, -.55, 0x7c828c], ['b', .095, .04, .03, 0, .02, -.64, 0x3a3f4a], ['b', .035, .035, .04, 0, 0, .1, DARK]] },
+    boost: { tip: 0, grip: [0, 0, -0.02], fore: null, parts: [['c', .022, .13, 0, 0, -.05, 0xf2f6ff, false], ['c', .024, .03, 0, .075, -.05, 0xe5484d, false], ['b', .01, .02, .08, 0, .1, -.05, 0xffd24a], ['c', .01, .06, 0, -.09, -.05, 0xc0c6d0, false]] },
+    armor: { tip: 0, grip: [0, 0, -0.02], fore: null, parts: [['b', .2, .24, .05, 0, 0, -.05, 0x2f4a7a], ['b', .22, .05, .06, 0, .13, -.05, 0x23262c], ['b', .12, .08, .06, 0, -.02, -.02, 0xd9a21b]] },
     knife: { tip: 0, grip: [0, -0.0, -0.03], fore: null, parts: [
       ['b', .012, .05, .22, 0, 0, -.22, 0xdfe3e8], ['b', .006, .01, .2, 0, -.02, -.22, 0x9aa0aa], ['b', .06, .018, .012, 0, 0, -.105, DARK], ['b', .026, .03, .11, 0, -.004, -.03, DARK]] },
     axe: { tip: 0, grip: [0, 0, -0.1], fore: null, parts: [
@@ -117,6 +131,39 @@
   }
 
   // 사람 모양 캐릭터 (원점 = 발바닥, 정면 = -z)
+  // 캐릭터를 그릴 때 호출 수를 줄이려고, 움직이지 않는 조각들을 하나의 메시로 합침 (조각 색은 정점 색으로 보존).
+  // exclude: 합치지 않을 메시들(맞았을 때 깜빡이는 몸통, 총구 불꽃 등)
+  let vcMat = null;
+  function bake(group, exclude) {
+    group.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(group.matrixWorld).invert(), rel = new THREE.Matrix4(), nm = new THREE.Matrix3(), v = new THREE.Vector3();
+    const list = [];
+    group.traverse((o) => { if (o.isMesh && !exclude.has(o) && o.geometry && o.geometry.attributes.position && o.material && o.material.color) list.push(o); });
+    if (list.length < 2) return null;
+    let nv = 0, ni = 0;
+    list.forEach((o) => { const g = o.geometry; nv += g.attributes.position.count; ni += g.index ? g.index.count : g.attributes.position.count; });
+    const pos = new Float32Array(nv * 3), nor = new Float32Array(nv * 3), col = new Float32Array(nv * 3), idx = new Uint16Array(ni);
+    let vo = 0, io = 0;
+    list.forEach((o) => {
+      const g = o.geometry, p = g.attributes.position, n = g.attributes.normal, c = o.material.color;
+      rel.multiplyMatrices(inv, o.matrixWorld); nm.getNormalMatrix(rel);
+      for (let i = 0; i < p.count; i++) {
+        v.fromBufferAttribute(p, i).applyMatrix4(rel); pos.set([v.x, v.y, v.z], (vo + i) * 3);
+        v.fromBufferAttribute(n, i).applyMatrix3(nm).normalize(); nor.set([v.x, v.y, v.z], (vo + i) * 3);
+        col.set([c.r, c.g, c.b], (vo + i) * 3);
+      }
+      if (g.index) for (let i = 0; i < g.index.count; i++) idx[io + i] = g.index.getX(i) + vo; else for (let i = 0; i < p.count; i++) idx[io + i] = vo + i;
+      vo += p.count; io += g.index ? g.index.count : p.count;
+      if (o.parent) o.parent.remove(o);
+    });
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    geo.setIndex(new THREE.BufferAttribute(idx, 1));
+    if (!vcMat) vcMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    const mesh = new THREE.Mesh(geo, vcMat); group.add(mesh);
+    return mesh;
+  }
+
   function humanoid(team, weaponId, name) {
     const shirt = team === 'A' ? 0x3b82f6 : 0xe5484d, dark = team === 'A' ? 0x1f3f7a : 0x7a1f26;
     const root = new THREE.Group(); root.rotation.order = 'YXZ';
@@ -155,7 +202,12 @@
     limb([-0.3, 1.3, 0], lh, 0.11); put(root, box(0.1, 0.1, 0.1), mat(SKIN), lh[0], lh[1], lh[2]);
     const tag = nameTag(name || '', team);
     root.add(tag);
-    return { root, legs, torso, head, gun, flash: gun.userData.flash, tag };
+    // 그리기 호출 줄이기: 다리(각각)와 나머지 정적 조각(몸/머리/팔/총)을 하나씩으로 합침. 몸통(깜빡임)·총구 불꽃·이름표는 그대로.
+    const geos = [], flash = gun.userData.flash, keep = new Set([torso]); if (flash) keep.add(flash);
+    legs.forEach((pv) => { const lm = bake(pv, new Set()); if (lm) { geos.push(lm.geometry); keep.add(lm); } }); // 합친 다리 조각은 몸통 합치기에서 빼야 다리가 계속 흔들림
+    const sm = bake(root, keep);
+    if (sm) geos.push(sm.geometry);
+    return { root, legs, torso, head, gun, flash, tag, geos };
   }
 
   window.RivalModels = { weapon, viewmodel, humanoid, nameTag, WEAPONS, SKIN };

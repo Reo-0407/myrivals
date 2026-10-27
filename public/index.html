@@ -105,6 +105,7 @@
         <button id="range-btn" class="btn ghost">🎯 사격장 (연습)</button>
         <button id="friendly-btn" class="btn ghost">🤝 친선전투 <b id="friendly-badge"></b></button>
         <button id="shop-btn" class="btn ghost">🛒 상점 <b id="coin-badge"></b></button>
+        <button id="daily-btn" class="btn ghost">📅 출석 · 오늘의 미션<b id="daily-badge"></b></button>
 
         <h3>로드아웃 (들고 갈 무기)</h3>
         <div id="loadout"></div>
@@ -114,6 +115,8 @@
           <summary>설정</summary>
           <div class="row"><label for="set-sens">감도 <b id="v-sens"></b></label><input id="set-sens" type="range" min="0.3" max="3" step="0.1"></div>
           <div class="row"><label for="set-fov">시야각 <b id="v-fov"></b></label><input id="set-fov" type="range" min="60" max="100" step="1"></div>
+          <div class="row"><label for="set-vol">효과음 음량 <b id="v-vol"></b></label><input id="set-vol" type="range" min="0" max="100" step="5"></div>
+          <div class="row"><label for="set-quality">그래픽 (느리면 낮음/자동)</label><select id="set-quality"><option value="auto">자동 (프레임을 보고 조절)</option><option value="high">높음</option><option value="low">낮음 (빠름)</option></select></div>
           <div class="row"><label for="set-assist">에임 보조 (적 쪽으로 살짝 끌어줌)</label><select id="set-assist"><option value="0">끄기</option><option value="1">약</option><option value="2">강</option></select></div>
           <div class="row"><label for="set-mem">AI가 기억한 내 습관</label><button id="set-mem" class="btn ghost" type="button">기억 지우기</button></div>
           <div class="row"><label for="set-auto">자동 발사 (적에게 조준점이 닿으면 자동으로 쏨)</label><input id="set-auto" type="checkbox"></div>
@@ -198,12 +201,25 @@
           <div id="shop-xh" class="hidden"><i class="l"></i><i class="r"></i><i class="t"></i><i class="b"></i></div>
         </div>
         <div class="shop-side">
-          <div class="tabs"><button data-tab="skin" class="chip on">무기 스킨</button><button data-tab="xh" class="chip">조준점 색</button></div>
+          <div class="tabs"><button data-tab="skin" class="chip on">무기 스킨</button><button data-tab="weapon" class="chip">무기</button><button data-tab="xh" class="chip">조준점 색</button><button data-tab="xs" class="chip">조준점 모양</button><button data-tab="boost" class="chip">부스터</button></div>
           <div id="shop-grid"></div>
           <div class="shop-detail"><b id="shop-name"></b><button id="shop-action" class="btn">-</button><p id="shop-msg" class="hint"></p></div>
         </div>
       </div>
       <p class="hint">코인은 경기를 하면 벌 수 있어요 (이기거나, 적을 처치하거나, 어려운 난이도일수록 많이!). 코인은 이 기기에만 저장돼요.</p>
+    </div>
+  </div>
+
+  <div id="daily" class="hidden">
+    <div class="ov-box daily-box">
+      <div class="shop-head"><h2>📅 출석 체크</h2><b id="daily-streak"></b><button id="daily-close" class="btn ghost">닫기</button></div>
+      <div id="daily-days"></div>
+      <p id="daily-miles" class="hint"></p>
+      <button id="daily-claim" class="btn">오늘 보상 받기</button>
+      <p id="daily-note" class="coin-line"></p>
+      <h3>오늘의 미션</h3>
+      <div id="daily-missions"></div>
+      <p class="hint">출석은 이 기기에 저장돼요. 하루 빠지면 연속 기록이 끊기지만 상점의 "출석 보호권"으로 지킬 수 있어요.</p>
     </div>
   </div>
 
@@ -217,6 +233,7 @@
   <script src="weapons.js"></script>
   <script src="models.js"></script>
   <script src="shop.js"></script>
+  <script src="daily.js"></script>
   <script src="physics.js"></script>
   <script src="audio.js"></script>
   <script src="bots.js"></script>

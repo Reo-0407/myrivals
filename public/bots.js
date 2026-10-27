@@ -396,6 +396,7 @@
       m.root.rotation.y = b.yaw;
       G.scene.add(m.root);
       bots.push(b);
+      if (G.touch) G.touch(); // 목록 캐시 갱신
       return b;
     }
 
@@ -404,8 +405,10 @@
       G.scene.remove(b.mesh.root);
       b.mesh.torso.material.dispose();
       b.mesh.tag.material.map.dispose(); b.mesh.tag.material.dispose();
+      (b.mesh.geos || []).forEach((g) => g.dispose()); // 합쳐 만든 전용 지오메트리 반납
     }
-    function clear(all) { // 기본: 라운드용 봇만 지움. 친선전투의 상대 사람(persist)은 라운드가 바뀌어도 남김. all=true 면 전부.
+    function clear(all) {
+      if (G.touch) G.touch(); // 기본: 라운드용 봇만 지움. 친선전투의 상대 사람(persist)은 라운드가 바뀌어도 남김. all=true 면 전부.
       for (let i = bots.length - 1; i >= 0; i--) { if (all || !bots[i].persist) { dispose(bots[i]); bots.splice(i, 1); } }
       // 지나간 길 기록은 절반 가까이 옅게 남겨서 "지난 라운드와 다른 길"을 고르게 함
       for (const t of ['A', 'B']) { const a = traffic[t]; for (let i = 0; i < a.length; i++) a[i] *= 0.45; teamIntel[t] = null; laneSeq[t] = shuffle([-1, 0, 1]); laneN[t] = 0; }

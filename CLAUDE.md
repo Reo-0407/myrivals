@@ -8,7 +8,7 @@
 - 효과음은 Web Audio로 직접 합성. 음원/그림 파일 없음.
 
 ## 파일
-`server.js`, `rival-server.js`(API, `data/rival.json` 저장), `rival-net.js`(친선전투 WebSocket 서버), `public/`(index.html, net.js, friendly.js, main.js, weapons.js, maps.js, map-village.js, map-harbor.js, map-snow.js, models.js, bots.js, physics.js, audio.js, style.css). 자세한 설명은 README.md.
+`server.js`, `rival-server.js`(API, `data/rival.json` 저장), `rival-net.js`(친선전투 WebSocket 서버), `public/`(index.html, daily.js, net.js, friendly.js, main.js, weapons.js, maps.js, map-village.js, map-harbor.js, map-snow.js, models.js, bots.js, physics.js, audio.js, style.css). 자세한 설명은 README.md.
 
 ## 최근 추가
 - 로비 `🎯 사격장`(`match.mode==='range'`): 과녁은 `bots.js`의 `dummy` 봇. 라운드/타이머 규칙은 꺼짐.
@@ -31,6 +31,10 @@
 - 봇 길찾기는 층 구분(`bots.js`): 칸마다 설 수 있는 높이 목록(`nodeH/nodeN`, K=5), 점=(칸,높이). 오르막은 `climbOk`가 실제 `phys.tryMove`로 걸어 올라가는지 시험(계단 옆에서 비스듬히 붙으면 막히는 것 방지). 위층 목적지는 흐트러뜨리지 않음. 계단/층 이동 구간은 지점을 정확히(0.6m) 밟아야 다음으로 넘어감. 창고 2층 계단 위 통로를 넓히려고 난간을 얇게 함(`maps.js`).
 - AI 학습은 라운드마다 계속 쌓임(져도 줄지 않음). 지옥은 조준 오차/빗나감 확률을 높여 쉬워짐, 기관총은 약하고 퍼지게 조정, 기관단총 14/점사 24.
 - 친선전투(온라인): `rival-net.js`가 접속자 목록/방(코드·초대·팀 A/B·설정)/경기 중 메시지 중계(`relay`)만 담당. 경기 규칙·AI 봇·라운드 진행은 **방장 브라우저**(main.js `NET.host`)가 하고, 각자는 자기 위치/체력을 `st`(15회/초)로 보냄. 원격 캐릭터는 `bots.js`의 `remote` 엔티티(`spawn({remote,human,persist,netId})`, `setRemote`, `revive`, `clear(true)`). 팀은 방 기준 A/B 이지만 화면에서는 항상 내 팀=A(`lt()/rtOf()`). 메시지: st(상태) bs(방장 봇 상태) fire(발사 연출) hit(피격 알림→주인이 체력 깎음) dead(사망) nade(수류탄) rdy/rs/ph/er/ov(준비·라운드시작·단계·라운드끝·경기끝). 피해는 던진/쏜 쪽이 계산(클라이언트 신뢰, 치트 방지 없음). 친선전투는 기록/코인/AI학습 없음. 새로 들어오는 사람은 사람이 적은 팀으로 자동 배정(친구 1명이면 반대 팀=서로 싸움), 초대 버튼은 방이 없으면 방을 만들며 초대. 라운드가 시작됐는데 아직 "입장"(마우스 잡기)을 안 눌렀으면 안내창을 남기고(`netOverlay`), 마우스가 풀리면 화면 클릭으로 다시 잡음 — 안 잡히면 조준/발사가 안 됨. 모드: `round`(라운드제) / `tdm`(팀 데스매치: `match.tdm`, 5분 제한 `TDM_TIME`, 죽으면 3초 뒤 `respawnSelf`/방장이 봇 `botsApi.respawn`, 점수는 방장이 `tdmScore`로 세고 `ph`로 알림, 목표 킬 `limit` 10/20/30/50).
+- 새 무기(코인으로 잠금 해제, `weapons.js`의 `price`): 지정사수소총 `dmr`, 연발 샷건 `ashotgun`, 기관권총 `mpistol`, 일본도 `katana`, 망치 `hammer`, 아드레날린 `boost`(7초 +35% 속도), 방탄 조끼 `armor`(방어막 50, `damage()`에서 체력보다 먼저 닳음). 구매 여부는 `RivalShop.hasWeapon`(지갑 `wp_<id>`), 로드아웃 칩에 🔒, 잠긴 걸 누르면 상점 무기 탭. 랜덤 무기는 산 것만.
+- 상점 탭: 무기 스킨 / 무기 / 조준점 색 / 조준점 모양(`xs_*`, CSS `#xh.shape-*`) / 부스터(`bo_coin2` 5경기 코인 2배, `bo_shield` 출석 보호권). 한정 스킨(`streak7/14/30`, `exclusive`)은 출석으로만. 지갑 `boost:{coin2,shield}`.
+- 출석/미션(`daily.js`, localStorage `rival_daily`): 7일 주기 보상 + 연속 7/14/30일 한정 스킨, 하루 빠지면 초기화(보호권 1장이 1일 보호), 오늘의 미션 3개(날짜로 고정, kills/heads/wins/matches/nades), `RivalDaily.add(stat)`를 main.js가 호출. 새 날 로비 입장 시 출석창 자동.
+- 최적화: 맵은 `maps.js mergeStatic`으로 같은 재질끼리 하나의 메시로 합침, 캐릭터는 `models.js bake`로 정점 색 메시 몇 개로 합침(그리기 호출 ~300→~40), `all()/enemiesOf()`는 프레임당 한 번만 계산(`G.touch`로 무효화), 그래픽 설정(자동/높음/낮음 — 자동은 프레임 시간으로 해상도 조절 `autoQuality`), 효과음 음량 설정.
 - 보안: 저장소/목록 객체는 `Object.create(null)`("__proto__" 오염 방지), 서버는 id 형식 검증. 설정/지갑은 불러올 때 값 검사.
 
 ## 규칙

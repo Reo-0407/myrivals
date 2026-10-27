@@ -1,7 +1,7 @@
 // RIVAL 효과음: Web Audio API로 직접 합성 (음원 파일 없음).
 // 브라우저는 사용자가 한 번 누르기 전에는 소리를 막기 때문에 Sfx.init()을 버튼 클릭 안에서 불러야 함.
 (function () {
-  let ctx = null, master = null, noiseBuf = null;
+  let ctx = null, master = null, noiseBuf = null, volume = 1; // volume: 설정의 음량(0~1)
 
   function init() {
     if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
@@ -9,7 +9,7 @@
     if (!AC) return;
     ctx = new AC();
     master = ctx.createGain();
-    master.gain.value = 0.55;
+    master.gain.value = 0.55 * volume;
     master.connect(ctx.destination);
     // 1초짜리 흰 소음 (총소리의 "치익" 부분 재료)
     noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
@@ -52,6 +52,8 @@
     pistol:   [0.11, 2200, 0.9, 170, 70, 0.4],
     revolver: [0.3, 1100, 0.6, 100, 35, 0.8],
     bow:      [0.1, 800, 1.1, 360, 110, 0.32],
+    dmr:      [0.24, 1500, 0.8, 130, 42, 0.7],
+    ashotgun: [0.2, 1000, 0.7, 120, 40, 0.6],
   };
 
   function shot(kind, vol) {
@@ -65,6 +67,7 @@
 
   window.Sfx = {
     init,
+    setVolume(v) { volume = Math.max(0, Math.min(1, +v || 0)); if (master) master.gain.value = 0.55 * volume; },
     shot,
     // 맞췄을 때 (머리면 높은 "띵")
     hit(head) { tone(head ? 1500 : 900, head ? 1900 : 600, 0.08, 0.25, 'square'); if (head) tone(2300, 2300, 0.12, 0.15, 'sine'); },

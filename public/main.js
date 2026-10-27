@@ -40,7 +40,7 @@
   // 설정 (브라우저에 저장)
   // =====================================================================
   const SETTINGS_VER = 2; // 올리면 모든 사람의 난이도/보조 설정이 새 기본값으로 한 번 초기화됨
-  const defaults = { v: SETTINGS_VER, sens: 1, fov: 80, auto: isTouch, assist: isTouch ? 2 : 0, mode: 2, diff: isTouch ? 'rookie' : 'easy', map: 'warehouse', wins: 5, randomGear: false, loadout: { primary: 'ar', secondary: 'pistol', melee: 'knife', utility: 'frag' } };
+  const defaults = { v: SETTINGS_VER, sens: 1, fov: 80, auto: isTouch, assist: isTouch ? 2 : 0, mode: 2, diff: isTouch ? 'rookie' : 'easy', map: 'warehouse', wins: 5, randomGear: false, vol: 1, quality: 'auto', loadout: { primary: 'ar', secondary: 'pistol', melee: 'knife', utility: 'frag' } };
   let settings = Object.assign({}, defaults);
   try {
     const saved = JSON.parse(safeGet('rival_settings') || '{}');
@@ -56,12 +56,14 @@
   settings.assist = [0, 1, 2].includes(settings.assist) ? settings.assist : defaults.assist;
   settings.wins = WIN_CHOICES.includes(settings.wins) ? settings.wins : 5;
   settings.randomGear = settings.randomGear === true;
+  settings.vol = num(settings.vol, 0, 1, 1);
+  settings.quality = ['auto', 'high', 'low'].includes(settings.quality) ? settings.quality : 'auto';
   const winRounds = () => URL_ROUNDS || settings.wins;
   settings.auto = typeof settings.auto === 'boolean' ? settings.auto : defaults.auto;
   if (!['rookie', 'easy', 'normal', 'hard', 'insane'].includes(settings.diff)) settings.diff = defaults.diff;
   if (typeof settings.map !== 'string' || !RivalMap.has(settings.map)) settings.map = 'warehouse';
   settings.loadout = Object.assign({}, defaults.loadout, settings.loadout);
-  ['primary', 'secondary', 'melee', 'utility'].forEach((s) => { const id = settings.loadout[s]; if (!W.list[id] || W.list[id].slot !== s) settings.loadout[s] = defaults.loadout[s]; });
+  ['primary', 'secondary', 'melee', 'utility'].forEach((s) => { const id = settings.loadout[s]; if (!W.list[id] || W.list[id].slot !== s || !RivalShop.hasWeapon(id)) settings.loadout[s] = defaults.loadout[s]; }); // 아직 안 산 무기가 저장돼 있으면 기본 무기로
   const saveSettings = () => safeSet('rival_settings', JSON.stringify(settings));
 
   // =====================================================================
@@ -123,9 +125,10 @@
       const sp = document.createElement('span'); sp.textContent = label; row.appendChild(sp);
       W.bySlot(slot).forEach((id) => {
         const b = document.createElement('button');
-        b.className = 'chip' + (settings.loadout[slot] === id ? ' on' : '');
-        b.textContent = W.list[id].name;
-        b.onclick = () => { settings.loadout[slot] = id; saveSettings(); renderLoadoutInto(box, infoEl, onPick); infoEl.textContent = weaponInfoText(id); if (onPick) onPick(slot); };
+        const locked = !RivalShop.hasWeapon(id);
+        b.className = 'chip' + (settings.loadout[slot] === id ? ' on' : '') + (locked ? ' locked' : '');
+        b.textContent = W.list[id].name + (locked ? ' 🔒' : '');
+        b.onclick = () => { if (locked) { RivalShop.openWeapon(id); return; } settings.loadout[slot] = id; saveSettings(); renderLoadoutInto(box, infoEl, onPick); infoEl.textContent = weaponInfoText(id); if (onPick) onPick(slot); };
         row.appendChild(b);
       });
       box.appendChild(row);
@@ -144,6 +147,10 @@
     $('set-sens').value = settings.sens; $('v-sens').textContent = settings.sens;
     $('set-fov').value = settings.fov; $('v-fov').textContent = settings.fov;
     $('set-auto').checked = !!settings.auto;
+    $('set-vol').value = Math.round(settings.vol * 100); $('v-vol').textContent = Math.round(settings.vol * 100) + '%';
+    $('set-vol').oninput = (e) => { settings.vol = +e.target.value / 100; $('v-vol').textContent = e.target.value + '%'; Sfx.setVolume(settings.vol); saveSettings(); };
+    $('set-quality').value = settings.quality;
+    $('set-quality').onchange = (e) => { settings.quality = e.target.value; saveSettings(); if (renderer) applyQuality(true); };
     $('set-assist').value = String(settings.assist);
     $('set-assist').onchange = (e) => { settings.assist = +e.target.value; saveSettings(); };
     $('set-mode').onchange = (e) => { settings.mode = +e.target.value; saveSettings(); };
@@ -187,7 +194,7 @@
   $('help-btn').onclick = showHelp;
   $('help-close').onclick = () => { $('help').classList.add('hidden'); safeSet('rival_help', '1'); };
 
-  const applyCrosshair = () => { $('xh').style.setProperty('--xhc', RivalShop.equippedXh().color); }; // 장착한 조준점 색
+  const applyCrosshair = () => { const x = $('xh'); x.style.setProperty('--xhc', RivalShop.equippedXh().color); x.className = 'shape-' + RivalShop.equippedShape().shape; }; // 장착한 조준점 색/모양
 
   if (window.RivalFriendly) RivalFriendly.onBack = () => enterLobby();
 
@@ -196,6 +203,7 @@
     $('my-stats').textContent = myStats ? '내 전적: ' + myStats.wins + '승 ' + myStats.losses + '패 · ' + myStats.kills + '킬 ' + myStats.deaths + '데스' : '';
     show('screen-lobby');
     if (window.RivalNet) RivalNet.connect(myId); // 친선전투 서버에 접속 (접속자 목록/초대 받기)
+    if (window.RivalDaily) RivalDaily.lobbyEntered(); // 새 날이면 출석창
     RivalShop.refreshBadge();
     loadBoard();
     if (!safeGet('rival_help')) showHelp(); // 처음 들어온 사람에게 한 번 보여줌
@@ -212,19 +220,47 @@
   const inp = { fire: false, adsHold: false, adsToggle: false };
 
   // 플레이어 (봇과 같은 모양의 entity)
-  const P = { id: 'me', name: '나', team: 'A', isBot: false, x: 0, y: EYE, eye: EYE, z: 27, vy: 0, onGround: true, yaw: 0, pitch: 0, hp: 100, alive: true, firedT: 0, kills: 0, deaths: 0, flashT: 0 };
+  const P = { id: 'me', name: '나', team: 'A', isBot: false, x: 0, y: EYE, eye: EYE, z: 27, vy: 0, onGround: true, yaw: 0, pitch: 0, hp: 100, alive: true, firedT: 0, kills: 0, deaths: 0, flashT: 0, armor: 0, boostT: 0 };
   let guns = [], cur = 0, lastCur = 0, switchT = 0;
   let adsT = 0, recoilAcc = 0, vmKick = 0, vmRaise = 0, swingT = 0, flashT = 0, dmgT = 0, hmT = 0, xhGap = 8, bannerT = 0, deadCamY = EYE;
   let lastHurt = 0, vm = null, curFov = 80, spawnPoint = { x: 0, z: 27, yaw: 0 };
 
-  const all = () => [P].concat(botsApi ? botsApi.bots : []);
-  const enemiesOf = (team) => all().filter((e) => e.team !== team && e.alive);
+  // all()/enemiesOf()는 봇 AI가 초당 수십 번 부르는데 매번 새 배열을 만들면 쓰레기 수거(GC) 때문에 끊김이 생김 → 프레임마다 한 번만 만들고 재사용
+  let allCache = [], allCacheT = -1, enemyCache = { A: [], B: [] }, enemyCacheT = -1;
+  const all = () => {
+    if (allCacheT !== now) { allCacheT = now; allCache.length = 0; allCache.push(P); if (botsApi) { const b = botsApi.bots; for (let i = 0; i < b.length; i++) allCache.push(b[i]); } }
+    return allCache;
+  };
+  const enemiesOf = (team) => {
+    if (enemyCacheT !== now) { // 같은 프레임 안에서는 죽고 사는 게 거의 안 바뀜 (죽은 뒤 같은 프레임에 다시 부르는 곳은 e.alive 를 다시 확인함)
+      enemyCacheT = now; const a = all(); enemyCache.A.length = 0; enemyCache.B.length = 0;
+      for (let i = 0; i < a.length; i++) { const e = a[i]; if (!e.alive) continue; if (e.team === 'A') enemyCache.B.push(e); else enemyCache.A.push(e); }
+    }
+    return team === 'A' ? enemyCache.A : enemyCache.B;
+  };
+
+  // ---- 그래픽 품질: 높음/낮음/자동. 자동은 실제 프레임 시간을 보고 해상도(픽셀 비율)를 올리고 내림 ----
+  const maxPR = () => Math.min(window.devicePixelRatio || 1, isTouch ? 1.5 : 2);
+  let curPR = 1, avgDt = 0.016, qT = 0;
+  function setPR(v) { curPR = Math.max(0.6, Math.min(maxPR(), v)); if (renderer) { renderer.setPixelRatio(curPR); resize(); } }
+  function applyQuality(retouch) {
+    const low = settings.quality === 'low';
+    setPR(low ? Math.min(1, maxPR()) : maxPR());
+    const sh = !isTouch && !low;
+    if (renderer.shadowMap.enabled !== sh) { renderer.shadowMap.enabled = sh; if (retouch && scene) scene.traverse((o) => { if (o.material && !Array.isArray(o.material)) o.material.needsUpdate = true; }); }
+    if (scene && scene.fog) { scene.fog.near = low ? 30 : 45; scene.fog.far = low ? 95 : 130; }
+  }
+  function autoQuality(rawDt) { // 2초마다: 느리면 해상도 낮춤, 여유로우면 조금씩 올림
+    avgDt = avgDt * 0.95 + Math.min(rawDt, 0.2) * 0.05; qT += rawDt;
+    if (qT < 2 || settings.quality !== 'auto') return;
+    qT = 0;
+    if (avgDt > 0.03 && curPR > 0.61) setPR(curPR - 0.15); else if (avgDt < 0.019 && curPR < maxPR() - 0.01) setPR(curPR + 0.1);
+  }
 
   function initGL() {
     renderer = new THREE.WebGLRenderer({ canvas: $('c'), antialias: !isTouch });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, isTouch ? 1.5 : 2));
     renderer.autoClear = false;
-    if (!isTouch) { renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; }
+    if (!isTouch) renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     camera = new THREE.PerspectiveCamera(80, 1, 0.05, 220);
     camera.rotation.order = 'YXZ';
     scene = new THREE.Scene();
@@ -236,6 +272,7 @@
     const dl = new THREE.DirectionalLight(0xffffff, 0.7); dl.position.set(1, 2, 1); gunScene.add(dl);
     gunCam = new THREE.PerspectiveCamera(55, 1, 0.01, 10);
     makeFx();
+    applyQuality(false); // 카메라/장면이 만들어진 뒤에 화질 적용
     resize();
   }
 
@@ -249,12 +286,12 @@
     if (mapGroup) { scene.remove(mapGroup); mapGroup.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); }
     boxes.length = 0; // phys가 같은 배열을 계속 쓰므로 비우고 다시 채움
     mapGroup = new THREE.Group(); scene.add(mapGroup);
-    world = RivalMap.build(mapGroup, { shadows: !isTouch }, id);
+    world = RivalMap.build(mapGroup, { shadows: !isTouch && settings.quality !== 'low' }, id);
     world.boxes.forEach((b) => boxes.push(b));
     scene.background = new THREE.Color(world.sky || 0x9db7d4);
-    scene.fog = new THREE.Fog(world.sky || 0x9db7d4, 45, 130);
+    scene.fog = new THREE.Fog(world.sky || 0x9db7d4, settings.quality === 'low' ? 30 : 45, settings.quality === 'low' ? 95 : 130);
     if (!phys) phys = Phys.create(boxes);
-    botsApi = RivalBots.create({ scene, phys, boxes, phase: () => match.phase, enemiesOf, shoot, smoked, mapId: () => id, throwUtil: botThrow });
+    botsApi = RivalBots.create({ scene, phys, boxes, phase: () => match.phase, enemiesOf, shoot, smoked, mapId: () => id, throwUtil: botThrow, touch: () => { allCacheT = -1; enemyCacheT = -1; } });
     curMap = id;
   }
 
@@ -272,7 +309,7 @@
   fitApp();
 
   function resize() {
-    if (!renderer) return;
+    if (!renderer || !camera || !gunCam) return;
     renderer.setSize(window.innerWidth, window.innerHeight);
     camera.aspect = gunCam.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix(); gunCam.updateProjectionMatrix();
@@ -399,18 +436,19 @@
       t.hp = Math.max(1, t.hp - amount); // 다음 상태 전송 때 진짜 값으로 맞춰짐
       return;
     }
-    t.hp = Math.max(0, t.hp - amount);
+    if (t.armor > 0) { const ab = Math.min(t.armor, amount); t.armor -= ab; amount -= ab; } // 방어막이 먼저 닳음
+    if (amount > 0) t.hp = Math.max(0, t.hp - amount);
     if (t.isBot) { t.flinchT = 0.5; if (attacker && attacker !== t) t.hurtFrom = attacker; } // 맞으면 움찔하고 쏜 쪽을 확인
     if (t === P && attacker && attacker !== P) showHitDir(attacker);
     if (t === P) { dmgT = Math.min(0.8, dmgT + 0.4); if (now - lastHurt > 0.12) { lastHurt = now; Sfx.hurt(); } } else t.flash = 0.12;
-    if (attacker === P && t !== P) { hitmark(head); Sfx.hit(head); if (head) { rangeStats.heads++; if (match.mode === 'match') match.heads++; } rangeStats.last = amount + (head ? ' (헤드샷)' : ''); }
+    if (attacker === P && t !== P) { hitmark(head); Sfx.hit(head); if (head) { rangeStats.heads++; if (match.mode === 'match') { match.heads++; RivalDaily.add('heads'); } } rangeStats.last = amount + (head ? ' (헤드샷)' : ''); }
     if (t.hp <= 0) kill(t, attacker, head, w);
   }
 
   function kill(t, a, head, w) {
     t.alive = false; t.deaths++;
     if (a !== t) a.kills++; // 수류탄 자폭은 킬로 세지 않음
-    if (a === P && a !== t) { match.kills++; rangeStats.kills++; Sfx.kill(); }
+    if (a === P && a !== t) { match.kills++; rangeStats.kills++; Sfx.kill(); if (match.mode === 'match') { RivalDaily.add('kills'); if (w && w.util === 'frag') RivalDaily.add('nades'); } }
     if (t === P) { match.deaths++; inp.adsToggle = false; inp.crouch = false; $('btn-ads').classList.remove('on'); $('btn-crouch').classList.remove('on'); P.flashT = 0; }
     feed(a === t ? t.name + '  [' + w.name + ' 자폭]' : a.name + '  [' + w.name + (head ? ' · 헤드샷' : '') + ']  ' + t.name, a === P || t === P);
     if (match.net && !t.remote) relay('all', 'dead', { v: idOf(t), k: idOf(a), h: head ? 1 : 0, w: w.id }); // 내(또는 방장의 봇) 죽음은 주인이 모두에게 알림
@@ -534,7 +572,7 @@
     setupGuns();
     spawnPoint = { x: 12, z: 18.5, yaw: 0 };
     inp.crouch = false; $('btn-crouch').classList.remove('on');
-    Object.assign(P, { x: 12, y: EYE, eye: EYE, z: 18.5, vy: 0, onGround: true, yaw: 0, pitch: 0, hp: 100, alive: true, firedT: 0, flashT: 0 });
+    Object.assign(P, { x: 12, y: EYE, eye: EYE, z: 18.5, vy: 0, onGround: true, yaw: 0, pitch: 0, hp: 100, alive: true, firedT: 0, flashT: 0, armor: 0, boostT: 0 });
     deadCamY = EYE; recoilAcc = 0; rangeT = 1.5; rangeUtilT = 2;
     const dummy = (x, z, track) => botsApi.spawn({ team: 'B', name: '과녁', diff: 'easy', x, z, yaw: Math.PI, primary: 'ar', dummy: true, track });
     [[8.5, '10m'], [-1.5, '20m'], [-11.5, '30m'], [-21.5, '40m']].forEach(([z, label]) => { // 고정 과녁 + 거리 표지
@@ -566,7 +604,7 @@
   }
 
   // 랜덤 무기 모드: 매치에서 라운드마다 주무기/보조/근접/유틸리티를 무작위로 받음 (내가 고른 로드아웃은 그대로 저장돼 있음)
-  const pickRandom = (slot) => { const ids = Object.keys(W.list).filter((k) => W.list[k].slot === slot); return ids[Math.floor(Math.random() * ids.length)]; };
+  const pickRandom = (slot) => { const ids = Object.keys(W.list).filter((k) => W.list[k].slot === slot && RivalShop.hasWeapon(k)); return ids[Math.floor(Math.random() * ids.length)]; }; // 산 무기만 나옴
   function setupGuns() {
     let lo = settings.loadout;
     if ((match.net ? match.gear : settings.randomGear) && match.mode === 'match') {
@@ -589,7 +627,7 @@
     const n = match.teamSize, names = shuffle(botsApi.NAMES.slice());
     spawnPoint = sA[0];
     inp.crouch = false; $('btn-crouch').classList.remove('on');
-    Object.assign(P, { x: spawnPoint.x, y: EYE, eye: EYE, z: spawnPoint.z, vy: 0, onGround: true, yaw: spawnPoint.yaw, pitch: 0, hp: 100, alive: true, firedT: 0 });
+    Object.assign(P, { x: spawnPoint.x, y: EYE, eye: EYE, z: spawnPoint.z, vy: 0, onGround: true, yaw: spawnPoint.yaw, pitch: 0, hp: 100, alive: true, firedT: 0, armor: 0, boostT: 0 });
     deadCamY = EYE; recoilAcc = 0;
     setupGuns();
     const allyDiff = { rookie: 'easy', easy: 'normal', normal: 'hard', hard: 'hard', insane: 'insane' }[match.diff] || match.diff; // 아군은 한 단계 더 잘 싸움
@@ -648,12 +686,13 @@
     match.phase = 'over';
     const won = match.score.A > match.score.B;
     botsApi.endMatch(won, match.diff);
+    RivalDaily.add('matches'); if (won) RivalDaily.add('wins');
     setBanner('');
     if (document.pointerLockElement) document.exitPointerLock();
     $('res-title').textContent = won ? '🏆 승리!' : '패배';
     $('res-score').textContent = '라운드 ' + match.score.A + ' : ' + match.score.B + (match.shots ? ' · 명중률 ' + Math.round(100 * match.hits / match.shots) + '% · 헤드샷 ' + match.heads : '');
     const gain = RivalShop.reward({ won, kills: match.kills, roundsWon: match.score.A, diff: match.diff, wins: settings.wins });
-    $('res-coins').textContent = '💰 +' + gain + ' 코인 (보유 ' + RivalShop.coins() + ')';
+    $('res-coins').textContent = '💰 +' + gain + ' 코인' + (RivalShop.lastBoosted ? ' (코인 2배 부스터 적용!)' : '') + ' (보유 ' + RivalShop.coins() + ')';
     $('res-stats').textContent = '이번 매치: ' + match.kills + '킬 ' + match.deaths + '데스 · 기록을 저장하는 중…';
     $('result').classList.remove('hidden');
     try {
@@ -677,6 +716,7 @@
     const k = settings.assist === 2 ? 1 : 0.5, d = camDir();
     let best = null, bestAng = 1e9;
     for (const e of enemiesOf('A')) {
+      if (!e.alive) continue;
       const dx = e.x - P.x, dy = (e.y - 0.55) - P.y, dz = e.z - P.z, dist = Math.hypot(dx, dy, dz);
       if (dist > Math.min(w.range[1], 70)) continue;
       const cos = (dx * d[0] + dy * d[1] + dz * d[2]) / dist;
@@ -710,6 +750,7 @@
     const d = camDir();
     let best = null, bd = 1e9;
     for (const e of enemiesOf('A')) {
+      if (!e.alive) continue;
       const dx = e.x - P.x, dy = (e.y - 0.6) - P.y, dz = e.z - P.z, dist = Math.hypot(dx, dy, dz);
       if (dist > w.range[0] + 0.4 || dist >= bd) continue;
       if ((dx * d[0] + dy * d[1] + dz * d[2]) / dist < 0.72) continue; // 정면 약 45도 안
@@ -751,7 +792,8 @@
     const wantAds = P.alive && live && !w.melee && !w.util && !g.reload && (inp.adsHold || inp.adsToggle);
     const len = Math.max(1, Math.hypot(fx, fz));
     fx /= len; fz /= len;
-    const speed = 5.5 * w.move * (wantAds ? 0.7 : 1) * (sprint ? 1.3 : 1) * (crouched ? 0.55 : 1);
+    if (P.boostT > 0) P.boostT -= dt;
+    const speed = 5.5 * w.move * (wantAds ? 0.7 : 1) * (sprint ? 1.3 : 1) * (crouched ? 0.55 : 1) * (P.boostT > 0 ? 1.35 : 1);
     const sin = Math.sin(P.yaw), cos = Math.cos(P.yaw);
     const px = P.x, pz = P.z;
     if (P.alive) {
@@ -828,6 +870,11 @@
     if (w.util === 'heal') {
       if (P.hp >= 100) { g.ammo = 1; Sfx.empty(); return; } // 체력이 가득이면 안 씀(돌려줌)
       P.hp = Math.min(100, P.hp + w.heal); Sfx.drink(); feed('치료 음료로 체력 ' + w.heal + ' 회복', true);
+    } else if (w.util === 'boost') {
+      P.boostT = w.boost; Sfx.drink(); feed('아드레날린! ' + w.boost + '초 동안 빨라져요', true);
+    } else if (w.util === 'armor') {
+      if ((P.armor || 0) >= w.armor) { g.ammo = 1; Sfx.empty(); return; } // 이미 가득이면 안 씀
+      P.armor = w.armor; Sfx.drink(); feed('방탄 조끼 착용: 방어막 ' + w.armor, true);
     } else throwNade(w);
     swingT = 0.22;
     if (g.ammo <= 0) switchTo(lastCur === 3 ? 0 : lastCur); // 다 쓰면 직전 무기로 복귀
@@ -1019,7 +1066,7 @@
   }
   function updateHud(dt) {
     const g = guns[cur], w = g.w;
-    setText('hp-text', String(P.hp));
+    setText('hp-text', P.hp + (P.armor > 0 ? ' 🛡' + P.armor : ''));
     const hf = $('hp-fill'); hf.style.width = P.hp + '%'; hf.style.background = P.hp > 60 ? '#4cd964' : P.hp > 30 ? '#ffcc00' : '#ff3b30';
     setText('ammo-main', w.melee ? '—' : String(g.ammo));
     setText('ammo-name', w.name + (w.melee ? '' : w.util ? (g.ammo > 0 ? ' · 발사 버튼으로 사용' : ' · 사용함') : ' · ' + (g.reload ? '장전 중…' : '∞')));
@@ -1100,9 +1147,9 @@
 
   function loop(t) {
     raf = requestAnimationFrame(loop);
-    const dt = Math.min(0.05, (t - (last || t)) / 1000);
+    const raw = (t - (last || t)) / 1000, dt = Math.min(0.05, raw);
     last = t;
-    if (running()) update(dt);
+    if (running()) { update(dt); if (raw > 0) autoQuality(raw); }
     render();
   }
 
@@ -1383,7 +1430,7 @@
   }
   function placePlayer(p) {
     spawnPoint = p; inp.crouch = false; $('btn-crouch').classList.remove('on');
-    Object.assign(P, { x: p.x, y: EYE, eye: EYE, z: p.z, vy: 0, onGround: true, yaw: p.yaw, pitch: 0, hp: 100, alive: true, firedT: 0 });
+    Object.assign(P, { x: p.x, y: EYE, eye: EYE, z: p.z, vy: 0, onGround: true, yaw: p.yaw, pitch: 0, hp: 100, alive: true, firedT: 0, armor: 0, boostT: 0 });
     deadCamY = EYE; recoilAcc = 0;
   }
   // 참가자: 방장이 알려준 라운드 시작
@@ -1414,6 +1461,7 @@
     match.phase = 'over'; setBanner('');
     if (document.pointerLockElement) document.exitPointerLock();
     const a = match.score.A, b = match.score.B;
+    RivalDaily.add('matches'); if (a > b) RivalDaily.add('wins');
     $('res-title').textContent = a > b ? '🏆 승리!' : a < b ? '패배' : '무승부';
     $('res-score').textContent = (match.tdm ? '팀 킬 ' : '라운드 ') + a + ' : ' + b + (match.shots ? ' · 명중률 ' + Math.round(100 * match.hits / match.shots) + '% · 헤드샷 ' + match.heads : '');
     $('res-stats').textContent = '이번 경기: ' + match.kills + '킬 ' + match.deaths + '데스 · 친선전투라서 기록/코인은 없어요';
@@ -1509,7 +1557,7 @@
     v.alive = false; v.hp = 0; v.deaths++;
     if (k && k !== v) k.kills++;
     const w = W.list[d.w] || W.list.ar;
-    if (k === P && k !== v) { match.kills++; Sfx.kill(); if (d.h) match.heads++; }
+    if (k === P && k !== v) { match.kills++; Sfx.kill(); if (d.h) match.heads++; RivalDaily.add('kills'); if (d.h) RivalDaily.add('heads'); if (w.util === 'frag') RivalDaily.add('nades'); }
     feed(k === v ? v.name + '  [' + w.name + ' 자폭]' : (k ? k.name : '?') + '  [' + w.name + (d.h ? ' · 헤드샷' : '') + ']  ' + v.name, k === P || v === P);
     if (match.tdm) tdmScore(v, k); else checkRoundEnd();
   }
@@ -1534,7 +1582,7 @@
   // 주소 끝에 ?debug 를 붙였을 때만 테스트용으로 내부 상태를 노출
   if (DEBUG) {
     window.__rival = {
-      P, keys, inp, boxes, match, W, joy, NET, get now() { return now; },
+      P, keys, inp, boxes, match, W, joy, NET, get now() { return now; }, render, renderInfo: () => { renderer.info.reset(); renderer.render(scene, camera); return { calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geoms: renderer.info.memory.geometries }; }, get botsApi() { return botsApi; }, damage, get scene() { return scene; }, get mapGroup() { return mapGroup; },
       get guns() { return guns; }, get cur() { return cur; }, get bots() { return botsApi.bots; },
       all, switchTo, doReload, startRound, castRay, get nav() { return botsApi.nav; },
       get ads() { return adsT; }, botStats, get vm() { return vm; }, shop: RivalShop, get spec() { return specTarget; }, settings, get world() { return world; }, loadMap, get curMap() { return curMap; }, mem: () => ({ children: scene.children.length, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, nades: nades.length, smokes: smokes.length, blasts: blasts.length }), step: (n, dt) => { for (let i = 0; i < n; i++) update(dt); }, rangeStats, startRangeSession, resetRangeStats, nades, smokes, blasts, smoked, get sbOpen() { return sbOpen; },
@@ -1542,7 +1590,9 @@
   }
 
   // ---- 시작 ----
-  RivalShop.init({ getWeapon: () => settings.loadout.primary, onChange: applyCrosshair });
+  Sfx.setVolume(settings.vol);
+  if (window.RivalDaily) RivalDaily.init();
+  RivalShop.init({ getWeapon: () => settings.loadout.primary, onChange: applyCrosshair, equipWeapon: (wid) => { settings.loadout[W.list[wid].slot] = wid; saveSettings(); renderLoadout(); }, isWeaponEquipped: (wid) => settings.loadout[W.list[wid].slot] === wid });
   applyCrosshair();
   initSettingsUI();
   if (myNick) {

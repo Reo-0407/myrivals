@@ -220,3 +220,39 @@ details .row { margin-top: 10px; }
 #invite-toast { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; gap: 8px; width: min(420px, 94vw); }
 #invite-toast .inv { background: #1c2540; border: 2px solid #5aa2ff; border-radius: 10px; padding: 10px; display: flex; align-items: center; gap: 8px; font-size: 14px; }
 #invite-toast .inv span { flex: 1; }
+
+/* ---- 조준점 모양 (게임 안 #xh / 상점 미리보기 #shop-xh) ---- */
+#xh.shape-dot .xl, #xh.shape-dot .xr, #xh.shape-dot .xt, #xh.shape-dot .xb { display: none; }
+#xh.shape-dot::after { content: ''; position: absolute; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 50%; background: var(--xhc, #fff); box-shadow: 0 0 2px #000; }
+#xh.shape-ring .xl, #xh.shape-ring .xr, #xh.shape-ring .xt, #xh.shape-ring .xb { display: none; }
+#xh.shape-ring::after { content: ''; position: absolute; width: calc(var(--gap) * 2 + 6px); height: calc(var(--gap) * 2 + 6px); margin: calc(var(--gap) * -1 - 3px) 0 0 calc(var(--gap) * -1 - 3px); border: 2px solid var(--xhc, #fff); border-radius: 50%; box-shadow: 0 0 2px #000; }
+#xh.shape-x { transform: rotate(45deg); }
+#xh.shape-tri .xb, #xh.shape-tri .xr, #xh.shape-tri .xl { display: none; }
+#xh.shape-tri .xt { height: 12px; top: calc(var(--gap) * -1 - 12px); }
+#xh.shape-tri::before, #xh.shape-tri::after { content: ''; position: absolute; width: 2px; height: 12px; background: var(--xhc, #fff); box-shadow: 0 0 2px #000; top: calc(var(--gap) * 0.5); }
+#xh.shape-tri::before { left: calc(var(--gap) * -1 - 5px); transform: rotate(35deg); }
+#xh.shape-tri::after { left: calc(var(--gap) + 3px); transform: rotate(-35deg); }
+#shop-xh[data-shape=dot] i { display: none; }
+#shop-xh[data-shape=dot]::after { content: ''; position: absolute; left: calc(50% - 5px); top: calc(50% - 5px); width: 10px; height: 10px; border-radius: 50%; background: var(--xhc); box-shadow: 0 0 3px #000; }
+#shop-xh[data-shape=ring] i { display: none; }
+#shop-xh[data-shape=ring]::after { content: ''; position: absolute; left: calc(50% - 22px); top: calc(50% - 22px); width: 38px; height: 38px; border: 4px solid var(--xhc); border-radius: 50%; box-shadow: 0 0 3px #000; }
+#shop-xh[data-shape=x] i { transform: rotate(45deg); }
+#shop-xh[data-shape=tri] .b, #shop-xh[data-shape=tri] .l, #shop-xh[data-shape=tri] .r { display: none; }
+.chip.locked { opacity: 0.65; border-style: dashed; }
+
+/* ---- 출석 / 미션 ---- */
+#daily { position: fixed; left: 0; top: 0; width: var(--app-w, 100%); height: var(--app-h, 100dvh); z-index: 41; background: #000d; display: flex; overflow-y: auto; padding: 12px; }
+#daily.hidden { display: none; }
+.daily-box { margin: auto; width: min(640px, 100%); display: flex; flex-direction: column; gap: 10px; }
+#daily-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+#daily-days .dd { position: relative; background: #0f1422; border: 2px solid #2a3350; border-radius: 10px; padding: 8px 2px; text-align: center; display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+#daily-days .dd b { color: #9aa6c0; }
+#daily-days .dd.cur { border-color: #ffcc00; box-shadow: 0 0 8px #ffcc0066; }
+#daily-days .dd.done { opacity: 0.55; }
+#daily-days .dd.big { background: #2a2140; }
+#daily-days .dd .ck { position: absolute; right: 3px; top: 1px; color: #4cd964; font-style: normal; }
+#daily-missions { display: flex; flex-direction: column; gap: 8px; }
+.dm { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "t b" "bar b" "s b"; gap: 4px 10px; align-items: center; background: #0f1422; border-radius: 10px; padding: 8px 10px; font-size: 14px; }
+.dm .dt { grid-area: t; } .dm .bar { grid-area: bar; height: 8px; background: #232b42; border-radius: 4px; overflow: hidden; } .dm .bar i { display: block; height: 100%; background: #4cd964; }
+.dm small { grid-area: s; color: #9aa6c0; } .dm .btn { grid-area: b; }
+.dm.done { opacity: 0.55; }

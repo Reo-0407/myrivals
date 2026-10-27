@@ -294,6 +294,45 @@
 
   // 새 맵 등록: RivalMap.register('아이디', { name, build(ctx) → { boxes, spawns, name, sky } })
   function register(id, def) { maps[id] = def; }
-  function build(scene, opts, id) { return (maps[id] || maps.warehouse).build(makeCtx(scene, opts)); }
+  // 같은 재질(그림/색)을 쓰는 정적 조각(상자/벽/바닥…)을 하나의 큰 메시로 합쳐서 "그리기 호출" 수를 확 줄임 (폰에서 특히 빨라짐).
+  // 충돌 판정(boxes)은 따로라서 영향 없음. 그림자 켜짐/꺼짐이 다른 조각끼리는 따로 합침.
+  function mergeStatic(group) {
+    group.updateMatrixWorld(true);
+    const buckets = new Map();
+    group.children.slice().forEach((ch) => {
+      const g = ch.geometry;
+      if (!ch.isMesh || !g || !g.attributes || !g.attributes.position || !g.attributes.normal || !g.attributes.uv || Array.isArray(ch.material) || ch.material.transparent) return;
+      const key = ch.material.uuid + (ch.castShadow ? 'c' : '-') + (ch.receiveShadow ? 'r' : '-');
+      let b = buckets.get(key); if (!b) { b = { material: ch.material, cast: ch.castShadow, recv: ch.receiveShadow, list: [] }; buckets.set(key, b); }
+      b.list.push(ch);
+    });
+    buckets.forEach((b) => {
+      if (b.list.length < 2) return;
+      let nv = 0, ni = 0;
+      b.list.forEach((ch) => { const g = ch.geometry; nv += g.attributes.position.count; ni += g.index ? g.index.count : g.attributes.position.count; });
+      const pos = new Float32Array(nv * 3), nor = new Float32Array(nv * 3), uv = new Float32Array(nv * 2), idx = nv > 65535 ? new Uint32Array(ni) : new Uint16Array(ni);
+      let vo = 0, io = 0;
+      const v = new THREE.Vector3(), nm = new THREE.Matrix3();
+      b.list.forEach((ch) => {
+        const g = ch.geometry, p = g.attributes.position, n = g.attributes.normal, u = g.attributes.uv;
+        nm.getNormalMatrix(ch.matrixWorld);
+        for (let i = 0; i < p.count; i++) {
+          v.fromBufferAttribute(p, i).applyMatrix4(ch.matrixWorld); pos[(vo + i) * 3] = v.x; pos[(vo + i) * 3 + 1] = v.y; pos[(vo + i) * 3 + 2] = v.z;
+          v.fromBufferAttribute(n, i).applyMatrix3(nm).normalize(); nor[(vo + i) * 3] = v.x; nor[(vo + i) * 3 + 1] = v.y; nor[(vo + i) * 3 + 2] = v.z;
+          uv[(vo + i) * 2] = u.getX(i); uv[(vo + i) * 2 + 1] = u.getY(i);
+        }
+        if (g.index) for (let i = 0; i < g.index.count; i++) idx[io + i] = g.index.getX(i) + vo; else for (let i = 0; i < p.count; i++) idx[io + i] = vo + i;
+        vo += p.count; io += g.index ? g.index.count : p.count;
+        group.remove(ch); g.dispose();
+      });
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+      geo.setIndex(new THREE.BufferAttribute(idx, 1));
+      geo.computeBoundingSphere();
+      const mesh = new THREE.Mesh(geo, b.material); mesh.castShadow = b.cast; mesh.receiveShadow = b.recv;
+      group.add(mesh);
+    });
+  }
+  function build(scene, opts, id) { const w = (maps[id] || maps.warehouse).build(makeCtx(scene, opts)); mergeStatic(scene); return w; }
   window.RivalMap = { build, register, has: (id) => !!maps[id], list: () => Object.keys(maps).map((k) => ({ id: k, name: maps[k].name })), tex: { mat, scaleUV } };
 })();
