@@ -35,6 +35,7 @@
 - 상점 탭: 무기 스킨 / 무기 / 조준점 색 / 조준점 모양(`xs_*`, CSS `#xh.shape-*`) / 부스터(`bo_coin2` 5경기 코인 2배, `bo_shield` 출석 보호권). 한정 스킨(`streak7/14/30`, `exclusive`)은 출석으로만. 지갑 `boost:{coin2,shield}`.
 - 출석/미션(`daily.js`, localStorage `rival_daily`): 7일 주기 보상 + 연속 7/14/30일 한정 스킨, 하루 빠지면 초기화(보호권 1장이 1일 보호), 오늘의 미션 3개(날짜로 고정, kills/heads/wins/matches/nades), `RivalDaily.add(stat)`를 main.js가 호출. 새 날 로비 입장 시 출석창 자동.
 - 최적화: 맵은 `maps.js mergeStatic`으로 같은 재질끼리 하나의 메시로 합침, 캐릭터는 `models.js bake`로 정점 색 메시 몇 개로 합침(그리기 호출 ~300→~40), `all()/enemiesOf()`는 프레임당 한 번만 계산(`G.touch`로 무효화), 그래픽 설정(자동/높음/낮음 — 자동은 프레임 시간으로 해상도 조절 `autoQuality`), 효과음 음량 설정.
+- 레벨: `main.js levelText`가 서버 전적(킬 10/승 100/패 30점)에서 계산해 로비·결과 화면에 표시(Lv L 필요 점수 50·(L-1)²). 저장 데이터 없음.
 - 보안: 저장소/목록 객체는 `Object.create(null)`("__proto__" 오염 방지), 서버는 id 형식 검증. 설정/지갑은 불러올 때 값 검사.
 
 ## 규칙

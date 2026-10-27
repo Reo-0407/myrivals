@@ -198,9 +198,16 @@
 
   if (window.RivalFriendly) RivalFriendly.onBack = () => enterLobby();
 
+  // 레벨: 서버에 저장된 전적에서 계산 (킬 10 + 승 100 + 패 30 점). 레벨 L 에 필요한 점수 = 50 * (L-1)^2
+  function levelText(st) {
+    const xp = (st.kills | 0) * 10 + (st.wins | 0) * 100 + (st.losses | 0) * 30;
+    const lv = Math.floor(Math.sqrt(xp / 50)) + 1, cur = 50 * (lv - 1) * (lv - 1), next = 50 * lv * lv;
+    return 'Lv.' + lv + ' (' + (xp - cur) + '/' + (next - cur) + ')';
+  }
+
   function enterLobby() {
     $('lobby-nick').textContent = myNick;
-    $('my-stats').textContent = myStats ? '내 전적: ' + myStats.wins + '승 ' + myStats.losses + '패 · ' + myStats.kills + '킬 ' + myStats.deaths + '데스' : '';
+    $('my-stats').textContent = myStats ? levelText(myStats) + ' · 내 전적: ' + myStats.wins + '승 ' + myStats.losses + '패 · ' + myStats.kills + '킬 ' + myStats.deaths + '데스' : '';
     show('screen-lobby');
     if (window.RivalNet) RivalNet.connect(myId); // 친선전투 서버에 접속 (접속자 목록/초대 받기)
     if (window.RivalDaily) RivalDaily.lobbyEntered(); // 새 날이면 출석창
@@ -698,7 +705,8 @@
     try {
       const r = await api('/report', { id: myId, kills: Math.min(match.kills, 50), deaths: Math.min(match.deaths, 50), won });
       myStats = r.stats;
-      $('res-stats').textContent = '이번 매치: ' + match.kills + '킬 ' + match.deaths + '데스 · 리더보드에 기록됐어요!';
+      const lvl = levelText(r.stats); $('res-stats').dataset.lv = lvl;
+      $('res-stats').textContent = '이번 매치: ' + match.kills + '킬 ' + match.deaths + '데스 · 리더보드에 기록됐어요! ' + lvl;
     } catch (e) {
       $('res-stats').textContent = '이번 매치: ' + match.kills + '킬 ' + match.deaths + '데스 · (기록 저장 실패: ' + e.message + ')';
     }
